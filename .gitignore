@@ -1,0 +1,6 @@
+# Dependencies
+/node_modules
+/.wwebjs_auth
+/.wwebjs_cache
+# Environment variables
+.env
