@@ -4,7 +4,7 @@ Project ini adalah bot WhatsApp yang berfungsi sebagai asisten keuangan pribadi.
 
 ## 🛠️ Stack Teknologi
 
-- **Backend**: Node.js
+- **Backend**: Node.js + ExpressJS
 - **WhatsApp API**: `whatsapp-web.js`
 - **QR Code**: `qrcode-terminal`
 - **OCR**: `EasyOCR` (Python) dengan dukungan bahasa Indonesia & Inggris
@@ -57,12 +57,18 @@ Project ini adalah bot WhatsApp yang berfungsi sebagai asisten keuangan pribadi.
 
 Setelah semua konfigurasi selesai, jalankan bot dengan perintah:
 ```bash
-node src/index.js
+npm start
 ```
 
 Tunggu beberapa saat, sebuah QR code akan muncul di terminal. Pindai (scan) QR code tersebut menggunakan aplikasi WhatsApp di ponsel Anda (dari menu Perangkat Tertaut / Linked Devices).
 
 Setelah berhasil, Anda akan melihat pesan "Client is ready!" di terminal.
+
+### HTTP Server (Express)
+
+- Default berjalan di port `3000` (bisa diubah dengan env `PORT`)
+- Endpoint healthcheck: `GET /health`
+- Endpoint `/api/*` bisa diaktifkan dengan env `HTTP_API_KEY` (request harus membawa header `x-api-key`)
 
 ## 🤖 Cara Menggunakan Bot
 
@@ -106,6 +112,9 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
   - `akses cabut <user_id>` – Mencabut akses user tertentu (khusus owner).
 
 Bot akan membalas dengan konfirmasi jika data berhasil dicatat di database.
+
+Catatan:
+- Beberapa perintah sensitif (token/invite/akses/export/struk) hanya bisa dipakai lewat chat pribadi (bukan grup).
 
 ## ✨ Fitur Baru
 

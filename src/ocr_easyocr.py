@@ -7,10 +7,7 @@ and prints the recognized text (joined by newlines).
 
 import sys
 import os
-import traceback
 import json
-import base64
-from pathlib import Path
 
 def main():
     if len(sys.argv) < 2:
