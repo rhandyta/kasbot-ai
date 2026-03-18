@@ -4,5 +4,6 @@
 /.wwebjs_cache
 /.wwebjs_auth_old
 ./public
+/.public
 # Environment variables
 .env

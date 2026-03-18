@@ -2,9 +2,27 @@ const { getUserCurrency, getTransactions, getLastTransactions } = require('../db
 const { getDateRange, formatMoney } = require('./utils');
 const { setUserState, clearUserState, getUserState } = require('./state');
 const { createList } = require('./interactive');
+const { logger } = require('../logger');
 
 async function startReportFlow(client, senderId) {
   setUserState(senderId, { step: 'awaiting_report_period' });
+  const reply = `Pilih periode laporan yang diinginkan:
+1. 10 Transaksi Terakhir
+2. Hari ini
+3. 3 Hari Terakhir
+4. Minggu ini
+5. 2 Minggu Terakhir
+6. Bulan ini
+7. 3 Bulan Terakhir
+8. 6 Bulan Terakhir
+9. Tahun ini`;
+
+  try {
+    await client.sendMessage(senderId, reply);
+  } catch (e) {
+    logger.warn('report_text_send_failed', { error: e?.message || String(e) });
+  }
+
   const list = createList(
     'Pilih periode laporan yang diinginkan:',
     'Pilih',
@@ -29,21 +47,13 @@ async function startReportFlow(client, senderId) {
   );
 
   if (list) {
-    await client.sendMessage(senderId, list);
-    return;
+    try {
+      await client.sendMessage(senderId, list);
+      return;
+    } catch (e) {
+      logger.warn('report_list_send_failed', { error: e?.message || String(e) });
+    }
   }
-
-  const reply = `Pilih periode laporan yang diinginkan:
-1. 10 Transaksi Terakhir
-2. Hari ini
-3. 3 Hari Terakhir
-4. Minggu ini
-5. 2 Minggu Terakhir
-6. Bulan ini
-7. 3 Bulan Terakhir
-8. 6 Bulan Terakhir
-9. Tahun ini`;
-  await client.sendMessage(senderId, reply);
 }
 
 function presentReport(message, senderId, transactions, periodName) {

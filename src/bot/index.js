@@ -33,6 +33,12 @@ function allowAttempt(bucketKey, limit, windowMs) {
   return true;
 }
 
+function stripInvisibleChars(text) {
+  return String(text || '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .trim();
+}
+
 function createBot() {
   const dbReady = ensureSchema();
 
@@ -113,6 +119,7 @@ function createBot() {
     if (interactiveId) {
       rawMessageBody = interactiveId;
     }
+    rawMessageBody = stripInvisibleChars(rawMessageBody);
     let messageBody = rawMessageBody.toLowerCase();
     logger.info('bot_message', {
       message_id: messageId,
@@ -341,7 +348,13 @@ function createBot() {
 
     if (messageBody === 'laporan' || messageBody === '/laporan') {
       clearUserState(senderId);
-      await report.startReportFlow(client, senderId);
+      try {
+        await report.startReportFlow(client, senderId);
+      } catch (e) {
+        logger.error('report_start_failed', { error: e?.message || String(e) });
+        clearUserState(senderId);
+        await message.reply('Maaf, terjadi kesalahan saat memulai laporan. Coba lagi.');
+      }
       return;
     }
 
