@@ -142,4 +142,30 @@ async function getLastTransactions(limit) {
   return transactions;
 }
 
-module.exports = { insertTransaction, getTransactions, getLastTransactions };
+/**
+ * Deletes the most recently inserted transaction (and its associated items via cascade).
+ * @returns {Promise<number>} The ID of the deleted transaction.
+ */
+async function deleteLastTransaction() {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    // Get the last transaction id
+    const [rows] = await connection.execute('SELECT id FROM transactions ORDER BY id DESC LIMIT 1');
+    if (rows.length === 0) {
+      throw new Error('No transaction found');
+    }
+    const transactionId = rows[0].id;
+    // Delete the transaction (cascade will delete items)
+    await connection.execute('DELETE FROM transactions WHERE id = ?', [transactionId]);
+    await connection.commit();
+    return transactionId;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+module.exports = { insertTransaction, getTransactions, getLastTransactions, deleteLastTransaction };

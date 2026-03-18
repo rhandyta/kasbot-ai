@@ -6,6 +6,7 @@ const {
   insertTransaction,
   getTransactions,
   getLastTransactions,
+  deleteLastTransaction,
 } = require("./db");
 const { saveReceipt } = require("./file-saver");
 
@@ -31,6 +32,12 @@ client.on("ready", () => {
 client.on("message", async (message) => {
   const senderId = message.from;
   const messageBody = message.body.replace(/@\d+/g, "").replace(/\s\s+/g, ' ').trim().toLowerCase();
+
+  // Cancel last transaction
+  if (messageBody === "batal" || messageBody === "batalkan" || messageBody.includes("batal transaksi")) {
+    await handleCancelTransaction(message, senderId);
+    return;
+  }
 
   // Always allow restarting or resetting the conversation flow
   if (messageBody === "laporan" || messageBody === "/laporan") {
@@ -90,6 +97,16 @@ async function startReportFlow(senderId) {
 8. 6 Bulan Terakhir
 9. Tahun ini`;
   await client.sendMessage(senderId, reply);
+}
+
+async function handleCancelTransaction(message, senderId) {
+  try {
+    const deletedId = await deleteLastTransaction();
+    await message.reply(`✅ Transaksi terakhir (ID: ${deletedId}) berhasil dibatalkan.`);
+  } catch (error) {
+    console.error("Failed to cancel transaction:", error);
+    await message.reply("❌ Gagal membatalkan transaksi. Mungkin tidak ada transaksi yang bisa dibatalkan.");
+  }
 }
 
 async function handleReportPeriodSelection(message, senderId, choice) {
@@ -231,35 +248,56 @@ async function processTransaction(message) {
   }
 
   try {
-    const structuredData = await structureText(rawText);
+    // Split message into potential separate transactions
+    const parts = splitIntoTransactions(rawText);
+    const transactions = [];
 
-    // If the AI identifies the text as not being a transaction, just ignore it.
-    if (structuredData.error && structuredData.error === "Bukan transaksi") {
-      console.log("AI determined the text is not a transaction. Ignoring.");
-      return;
+    // Save receipt once if media exists
+    const receiptPath = mediaFile ? await saveReceipt(mediaFile) : null;
+
+    for (const part of parts) {
+      try {
+        const structuredData = await structureText(part);
+
+        // Skip if AI says it's not a transaction
+        if (structuredData.error && structuredData.error === "Bukan transaksi") {
+          console.log(`AI determined the text is not a transaction: "${part}"`);
+          continue;
+        }
+
+        structuredData.receipt_path = receiptPath;
+        if (!structuredData.transaction_date) {
+          structuredData.transaction_date = new Date().toISOString().slice(0, 10);
+        }
+
+        await insertTransaction(structuredData);
+        transactions.push(structuredData);
+      } catch (error) {
+        console.error(`Failed to process part: "${part}"`, error);
+        // Continue with other parts
+      }
     }
 
-    structuredData.receipt_path = mediaFile
-      ? await saveReceipt(mediaFile)
-      : null;
-    if (!structuredData.transaction_date) {
-      structuredData.transaction_date = new Date().toISOString().slice(0, 10);
+    if (transactions.length === 0) {
+      // No valid transactions found
+      return message.reply("Tidak ada transaksi yang bisa dicatat dari pesan ini.");
     }
 
-    await insertTransaction(structuredData);
-
-    let confirmationMessage = `✅ *Mantap! Berhasil dicatat:*\n
-- *Tipe:* ${structuredData.tipe}
-- *Total:* Rp${new Intl.NumberFormat("id-ID").format(structuredData.nominal)}
-- *Kategori:* ${structuredData.kategori}
-- *Keterangan:* ${structuredData.keterangan}`;
-
-    if (structuredData.items && structuredData.items.length > 0) {
-      confirmationMessage += `\n\n*Rincian Barang:*`;
-      structuredData.items.forEach((item) => {
-        confirmationMessage += `\n- ${item.item_name} (${item.quantity}x)`;
-      });
-    }
+    let confirmationMessage = `✅ *Berhasil dicatat ${transactions.length} transaksi:*\n\n`;
+    transactions.forEach((tx, idx) => {
+      confirmationMessage += `*Transaksi ${idx + 1}:*\n`;
+      confirmationMessage += `- *Tipe:* ${tx.tipe}\n`;
+      confirmationMessage += `- *Total:* Rp${new Intl.NumberFormat("id-ID").format(tx.nominal)}\n`;
+      confirmationMessage += `- *Kategori:* ${tx.kategori}\n`;
+      confirmationMessage += `- *Keterangan:* ${tx.keterangan}\n`;
+      if (tx.items && tx.items.length > 0) {
+        confirmationMessage += `  *Rincian Barang:*\n`;
+        tx.items.forEach((item) => {
+          confirmationMessage += `    - ${item.item_name} (${item.quantity}x)\n`;
+        });
+      }
+      confirmationMessage += '\n';
+    });
 
     message.reply(confirmationMessage);
   } catch (error) {
@@ -353,6 +391,33 @@ function getDateRange(choice) {
       return {};
   }
   return { startDate, endDate, periodName };
+}
+
+/**
+ * Splits a message into potential separate transactions based on conjunctions.
+ * @param {string} text The raw message text.
+ * @returns {string[]} Array of substrings each representing a single transaction.
+ */
+function splitIntoTransactions(text) {
+  // Conjunctions that indicate separate transactions
+  const conjunctions = [' dan ', ' lalu ', ' kemudian ', ' serta ', ' plus ', ' juga '];
+  let parts = [text.trim()];
+  // Split by each conjunction iteratively
+  conjunctions.forEach(conj => {
+    const newParts = [];
+    parts.forEach(part => {
+      // Split by conjunction, but keep the conjunction as delimiter (remove)
+      const split = part.split(conj);
+      split.forEach((s, idx) => {
+        if (s.trim().length > 0) {
+          newParts.push(s.trim());
+        }
+      });
+    });
+    parts = newParts;
+  });
+  // If after splitting we still have only one part, but there's a comma with numbers? Not needed.
+  return parts;
 }
 
 client.initialize();

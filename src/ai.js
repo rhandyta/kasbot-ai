@@ -13,18 +13,36 @@ const openai = new OpenAI({
  */
 async function structureText(rawText) {
   console.log('Sending text to AI for structuring...');
-  
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
+
+  // Helper function for keyword‑based type detection (fallback)
+  function detectTypeHint(text) {
+    const incomeKeywords = ['gajian', 'gaji', 'salary', 'bonus', 'komisi', 'tip', 'uang masuk', 'terima', 'dapat', 'diterima', 'masuk', 'penjualan', 'jual', 'investasi', 'dividen', 'hibah', 'hadiah', 'refund', 'kembalian', 'reimbursement', 'setoran', 'deposit'];
+    const expenseKeywords = ['bayar', 'beli', 'pembayaran', 'pengeluaran', 'keluar', 'out', 'expense', 'shopping', 'makan', 'transport', 'tol', 'parkir', 'listrik', 'pulsa', 'topup'];
+    const lowerText = text.toLowerCase();
+    const hasIncome = incomeKeywords.some(kw => lowerText.includes(kw));
+    const hasExpense = expenseKeywords.some(kw => lowerText.includes(kw));
+    if (hasIncome && !hasExpense) return 'IN';
+    if (hasExpense && !hasIncome) return 'OUT';
+    return null;
+  }
 
   const systemPrompt = `You are an expert financial recording assistant for an Indonesian user. Your task is to extract structured data from messy text from an OCR of a receipt. The output must be a valid JSON object.
 
 Today's date is: ${today.toISOString().slice(0, 10)}.
 
 The JSON object MUST have these keys:
-1.  "tipe": string, "OUT" for expenses/receipts, "IN" for income. Infer this from keywords like "gajian", "terima", "dapat uang", etc. for "IN". Default to "OUT" if ambiguous.
+1.  "tipe": string, "OUT" for expenses/receipts, "IN" for income. Infer this from keywords.
+   - Income keywords: gajian, gaji, salary, bonus, komisi, tip, uang masuk, terima, dapat, diterima, masuk, penjualan, jual, investasi, dividen, hibah, hadiah, refund, kembalian, reimbursement, setoran, deposit.
+   - Expense keywords: bayar, beli, pembayaran, pengeluaran, keluar, out, expense, shopping, makan, transport, tol, parkir, listrik, pulsa, topup.
+   - If the text contains any income keyword, classify as "IN". If it contains expense keywords, classify as "OUT". If both present, decide based on context. Default to "OUT" only if no clear indicator.
 2.  "nominal": number, the grand total amount, without formatting.
+   - If the amount is followed by "ribu", "rb", or "k", multiply by 1000 (e.g., "50 ribu" → 50000).
+   - If the amount includes "juta" or "jt", multiply by 1,000,000.
+   - If no unit is given and the amount is less than 1000, assume it's in thousands for typical Indonesian transactions (e.g., "beli ayam 50" → 50000).
 3.  "kategori": string, infer a relevant category (e.g., "Belanja Bulanan", "Konsumsi", "Elektronik", "Gaji").
 4.  "keterangan": string, a brief description (e.g., the name of the store or a summary).
 5.  "transaction_date": string, in "YYYY-MM-DD" format. Use the date on the receipt. If no date is on the receipt, use today's date.
@@ -49,7 +67,16 @@ Example 3 (Non-transaction Text): "laporan bulanan dong"
 Output 3: { "error": "Bukan transaksi" }
 
 Example 4 (Income Text): "gajian dari kantor 5000000"
-Output 4: { "tipe": "IN", "nominal": 5000000, "kategori": "Gaji", "keterangan": "Gajian dari kantor", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }`;
+Output 4: { "tipe": "IN", "nominal": 5000000, "kategori": "Gaji", "keterangan": "Gajian dari kantor", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }
+
+Example 5 (Income with keyword): "dapat bonus 200000"
+Output 5: { "tipe": "IN", "nominal": 200000, "kategori": "Bonus", "keterangan": "Dapat bonus", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }
+
+Example 6 (Amount without unit): "beli ayam 50"
+Output 6: { "tipe": "OUT", "nominal": 50000, "kategori": "Makanan", "keterangan": "Beli ayam", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }
+
+Example 7 (Income from sale): "jual laptop 7500000"
+Output 7: { "tipe": "IN", "nominal": 7500000, "kategori": "Penjualan", "keterangan": "Jual laptop", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -62,6 +89,15 @@ Output 4: { "tipe": "IN", "nominal": 5000000, "kategori": "Gaji", "keterangan": 
     });
 
     const structuredData = JSON.parse(response.choices[0].message.content);
+    
+    // Fallback detection: compare AI's tipe with keyword‑based hint
+    if (!structuredData.error) {
+      const keywordHint = detectTypeHint(rawText);
+      if (keywordHint && keywordHint !== structuredData.tipe) {
+        console.warn(`⚠️  AI tipe (${structuredData.tipe}) differs from keyword hint (${keywordHint}) for text: "${rawText}"`);
+      }
+    }
+    
     console.log('AI structuring successful:', structuredData);
     return structuredData;
   } catch (error) {
