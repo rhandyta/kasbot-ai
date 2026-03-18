@@ -23,9 +23,9 @@ async function structureText(rawText) {
 Today's date is: ${today.toISOString().slice(0, 10)}.
 
 The JSON object MUST have these keys:
-1.  "tipe": string, always "OUT" for receipts unless specified otherwise.
+1.  "tipe": string, "OUT" for expenses/receipts, "IN" for income. Infer this from keywords like "gajian", "terima", "dapat uang", etc. for "IN". Default to "OUT" if ambiguous.
 2.  "nominal": number, the grand total amount, without formatting.
-3.  "kategori": string, infer a relevant category (e.g., "Belanja Bulanan", "Konsumsi", "Elektronik").
+3.  "kategori": string, infer a relevant category (e.g., "Belanja Bulanan", "Konsumsi", "Elektronik", "Gaji").
 4.  "keterangan": string, a brief description (e.g., the name of the store or a summary).
 5.  "transaction_date": string, in "YYYY-MM-DD" format. Use the date on the receipt. If no date is on the receipt, use today's date.
 6.  "items": An array of objects, where each object represents an item on the receipt. Each object MUST have these keys:
@@ -46,7 +46,10 @@ Example 2 (Receipt Text): "Indomaret Tanggal: 14-03-2026 CHITATO LITE 2x10000 20
 Output 2: { "tipe": "OUT", "nominal": 23500, "kategori": "Belanja Harian", "keterangan": "Indomaret", "transaction_date": "2026-03-14", "items": [ { "item_name": "CHITATO LITE", "quantity": 2, "price": 20000 }, { "item_name": "AQUA 600ML", "quantity": 1, "price": 3500 } ] }
 
 Example 3 (Non-transaction Text): "laporan bulanan dong"
-Output 3: { "error": "Bukan transaksi" }`;
+Output 3: { "error": "Bukan transaksi" }
+
+Example 4 (Income Text): "gajian dari kantor 5000000"
+Output 4: { "tipe": "IN", "nominal": 5000000, "kategori": "Gaji", "keterangan": "Gajian dari kantor", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }`;
 
   try {
     const response = await openai.chat.completions.create({

@@ -111,7 +111,7 @@ async function getLastTransactions(limit) {
     ORDER BY transaction_date DESC, id DESC
     LIMIT ?
   `;
-  const [transactions] = await pool.execute(mainSql, [limit]);
+  const [transactions] = await pool.query(mainSql, [limit]);
 
   if (transactions.length === 0) {
     return [];
