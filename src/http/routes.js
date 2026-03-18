@@ -1,11 +1,9 @@
 const { spawn } = require('child_process');
 const { pool } = require('../db/pool');
 const { logger } = require('../logger');
-const { parseStatementCsv } = require('../import/csv');
-const { insertTransaction, ensureSchema, findTransactionByFingerprint } = require('../db');
 const { metrics, inc, setGauge } = require('../metrics');
 const { checkSchema } = require('../db/schemaCheck');
-const { logAudit } = require('../db/audit');
+const { apiRouter } = require('./api');
 
 let lastPythonCheck = { at: 0, ok: null, error: null };
 
@@ -79,45 +77,7 @@ function registerRoutes(app) {
     res.json({ ok: true, metrics });
   });
 
-  app.post('/api/import/statement', async (req, res) => {
-    try {
-      await ensureSchema();
-      const { accountId, csv, dryRun } = req.body || {};
-      const account = parseInt(accountId, 10);
-      if (!Number.isFinite(account) || account <= 0) {
-        return res.status(400).json({ ok: false, error: 'accountId invalid' });
-      }
-      if (!csv || typeof csv !== 'string') {
-        return res.status(400).json({ ok: false, error: 'csv required' });
-      }
-      const txs = parseStatementCsv(csv);
-      if (dryRun) {
-        return res.json({ ok: true, dryRun: true, count: txs.length, sample: txs.slice(0, 3) });
-      }
-      let inserted = 0;
-      let skipped = 0;
-      for (const tx of txs) {
-        if (tx.fingerprint_hash) {
-          const dup = await findTransactionByFingerprint(account, tx.fingerprint_hash);
-          if (dup) {
-            skipped += 1;
-            continue;
-          }
-        }
-        await insertTransaction(account, tx, null);
-        inserted += 1;
-      }
-      await logAudit(account, null, 'api_import_statement', 'account', String(account), {
-        request_id: req.requestId || null,
-        inserted,
-        skipped,
-      });
-      return res.json({ ok: true, inserted, skipped });
-    } catch (e) {
-      logger.error('import_statement_failed', { error: e?.message || String(e) });
-      return res.status(400).json({ ok: false, error: e?.message || 'import_failed' });
-    }
-  });
+  app.use('/api', apiRouter);
 
   app.get('/debug/config', (req, res) => {
     logger.info('debug_config', { hasApiKey: !!process.env.HTTP_API_KEY });

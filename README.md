@@ -85,6 +85,22 @@ npm run start:pm2
 - Endpoint `/api/*` bisa diaktifkan dengan env `HTTP_API_KEY` (request harus membawa header `x-api-key`)
 - Import statement CSV: `POST /api/import/statement`
 
+### API Dashboard (Web)
+
+- Summary: `GET /api/dashboard/summary?accountId=1&start=2026-03-01&end=2026-03-31&currency=IDR`
+- Timeseries: `GET /api/dashboard/timeseries?accountId=1&start=2026-03-01&end=2026-03-31&bucket=day&currency=IDR`
+- Breakdown kategori: `GET /api/dashboard/by-category?accountId=1&start=2026-03-01&end=2026-03-31&type=OUT&limit=20&currency=IDR`
+- Breakdown merchant: `GET /api/dashboard/by-merchant?accountId=1&start=2026-03-01&end=2026-03-31&type=OUT&limit=20&currency=IDR`
+- Budget status: `GET /api/dashboard/budget-status?accountId=1&month=2026-03&currency=IDR`
+
+API transaksi:
+- List/pagination: `GET /api/transactions?accountId=1&start=2026-03-01&end=2026-03-31&type=OUT&limit=20&offset=0`
+- Search: `GET /api/transactions?accountId=1&q=parkir&limit=20&offset=0`
+- Detail: `GET /api/transactions/123?accountId=1`
+
+Audit log:
+- `GET /api/audit?accountId=1&limit=50&offset=0`
+
 Catatan Docker:
 - Di Docker, gunakan env `PYTHON_BIN=python3` jika command `python` tidak tersedia.
 
