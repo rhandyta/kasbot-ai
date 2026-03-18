@@ -35,7 +35,7 @@ Project ini adalah bot WhatsApp yang berfungsi sebagai asisten keuangan pribadi.
 
 3.  **Setup Database**
     - Buat sebuah database baru di server MySQL Anda (contoh: `wa_finance`).
-    - Impor skema tabel dengan menjalankan isi dari file `setup.sql` di database Anda. Skema akan membuat tabel `transactions` (dengan kolom `currency`), `transaction_items`, dan `user_settings` untuk preferensi mata uang.
+    - Impor skema tabel dengan menjalankan isi dari file `setup.sql` di database Anda. Skema akan membuat tabel `transactions`, `transaction_items`, `user_settings`, `accounts`/`account_members`, `account_invites`, `audit_logs`, `budgets`, dan `recurring_rules`.
 
 4.  **Konfigurasi Environment**
     - Salin file `.env.example` menjadi file baru bernama `.env`.
@@ -79,8 +79,31 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
 
 - **Perintah Tambahan**:
   - `cari <keyword>` – Mencari transaksi berdasarkan kata kunci.
+  - `laporan` – Menampilkan menu periode laporan.
+  - `export <periode>` – Export transaksi jadi CSV (contoh: `export bulan ini`).
+  - `struk terakhir` – Mengirim file struk terakhir yang tersimpan.
+  - `undo` / `batal` – Membatalkan transaksi terakhir.
   - `edit transaksi terakhir jumlah <jumlah>` – Mengubah nominal transaksi terakhir.
   - `set currency <kode>` – Mengubah preferensi mata uang (IDR, USD, EUR).
+  - `help` / `menu` – Menampilkan daftar perintah.
+  - `budget set <kategori> <jumlah>` – Set budget kategori bulan ini.
+  - `budget list` – Melihat status budget bulan ini.
+  - `ulang list` – List transaksi berulang.
+  - `ulang tambah <in|out> <jumlah> <kategori> ; <keterangan> ; <tgl 1-28>` – Tambah transaksi berulang.
+  - `ulang hapus <id>` – Menonaktifkan transaksi berulang.
+  - `token` – Menampilkan token akun aktif (khusus owner).
+  - `token reset` – Reset token akun aktif (khusus owner).
+  - `pakai token <token>` – Masuk ke akun orang lain untuk monitoring (read-only).
+  - `monitor off` – Kembali ke akun kamu sendiri.
+  - `akun` – Menampilkan daftar akun yang kamu punya akses.
+  - `akun pilih <nomor>` – Mengganti akun aktif.
+  - `akun baru` – Membuat akun baru (pencatatan terpisah).
+  - `invite` – Membuat token invite viewer (single-use, 30 hari).
+  - `invite editor` – Membuat token invite editor (bisa mencatat).
+  - `invite list` – Melihat daftar invite.
+  - `invite cabut <id>` – Mencabut invite tertentu.
+  - `akses list` – Melihat member yang punya akses ke akun aktif.
+  - `akses cabut <user_id>` – Mencabut akses user tertentu (khusus owner).
 
 Bot akan membalas dengan konfirmasi jika data berhasil dicatat di database.
 
@@ -102,7 +125,7 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 - Laporan otomatis akan dikonversi ke mata uang yang Anda pilih.
 
 ### 🖼️ Optimasi OCR dengan Preprocessing Gambar
-- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, kontras, thresholding) sebelum dikenali oleh EasyOCR.
+- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, kontras, resizing) sebelum dikenali oleh EasyOCR.
 - Meningkatkan akurasi pengenalan teks pada gambar dengan pencahayaan buruk atau noise.
 
 ### ⚡ Caching Respons AI
@@ -112,3 +135,44 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 ### 🗃️ Skema Database yang Diperluas
 - Tabel `transactions` sekarang memiliki kolom `currency` (CHAR(3)) untuk menyimpan mata uang transaksi.
 - Tabel `user_settings` untuk menyimpan preferensi mata uang per pengguna.
+
+### 🔑 Token Monitoring (Sharing Akses)
+- Setiap pencatatan berada di dalam sebuah akun (`accounts`).
+- Owner bisa membagikan token agar orang lain bisa melihat laporan/pencarian (mode monitoring/read-only).
+- Aksi yang mengubah data (mencatat, edit, batal) akan ditolak saat sedang mode monitoring.
+- Untuk sharing yang lebih aman per orang, owner bisa pakai `invite` (token single-use) dan mencabut akses dengan `akses cabut`.
+
+Contoh:
+- Kamu kirim: `token` → dapat token
+- Pacar kamu kirim: `pakai token <token-kamu>` → bisa lihat `laporan` dan `cari ...`
+
+### ✅ Preview & Konfirmasi Sebelum Simpan
+- Setelah kamu kirim transaksi (teks/foto struk), bot akan mengirim preview dulu.
+- Balas `ok` untuk menyimpan atau `batal` untuk membatalkan.
+- Bisa koreksi sebelum simpan:
+  - `ubah transaksi <n> jumlah <angka>`
+  - `ubah transaksi <n> kategori <teks>`
+  - `ubah transaksi <n> keterangan <teks>`
+  - `ubah transaksi <n> tanggal YYYY-MM-DD`
+
+### 📄 Export CSV
+- Export transaksi jadi CSV untuk periode tertentu.
+- Contoh: `export bulan ini`, `export 3 hari terakhir`, `export tahun ini`, atau `export 10 transaksi terakhir`.
+
+### 📎 Ambil Struk Terakhir
+- Kirim `struk terakhir` untuk mendapatkan file struk terakhir yang tersimpan.
+
+### 🎯 Budget Bulanan per Kategori
+- Set budget: `budget set <kategori> <jumlah>`
+- Lihat status: `budget list`
+
+### 🔁 Transaksi Berulang
+- Tambah: `ulang tambah <in|out> <jumlah> <kategori> ; <keterangan> ; <tgl 1-28>`
+- Lihat: `ulang list`
+- Nonaktif: `ulang hapus <id>`
+
+### 🧾 Deteksi Duplikat Struk
+- Jika struk yang sama terkirim lagi, bot akan memberi peringatan “kemungkinan duplikat” di preview.
+
+### 🧾 Audit Log
+- Perubahan penting (buat invite, join token, insert/edit/hapus transaksi) dicatat di tabel `audit_logs`.
