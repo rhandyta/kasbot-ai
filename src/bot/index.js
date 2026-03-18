@@ -14,6 +14,7 @@ const report = require('./report');
 const account = require('./account');
 const tx = require('./transaction');
 const category = require('./category');
+const merchant = require('./merchant');
 const { extractInteractiveId } = require('./interactive');
 
 const attemptBuckets = new Map();
@@ -128,6 +129,7 @@ function createBot() {
       'struk terakhir',
       'lihat struk terakhir',
       'kategori',
+      'merchant',
     ];
     if (isGroup) {
       const matched = sensitiveInGroup.some((p) => messageBody === p || messageBody.startsWith(`${p} `));
@@ -159,6 +161,13 @@ function createBot() {
       const ctx = await getCtx(true);
       if (!ctx) return;
       await category.handleCategoryCommand(message, senderId, ctx.accountId, rawMessageBody);
+      return;
+    }
+
+    if (messageBody === 'merchant' || messageBody.startsWith('merchant ')) {
+      const ctx = await getCtx(true);
+      if (!ctx) return;
+      await merchant.handleMerchantCommand(message, senderId, ctx.accountId, rawMessageBody);
       return;
     }
 

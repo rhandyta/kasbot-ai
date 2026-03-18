@@ -3,6 +3,7 @@ const path = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { getUserCurrency, getLastTransactions, getTransactionsForExport } = require('../../db');
 const { getDateRange } = require('../utils');
+const { maskSecrets } = require('../../logger');
 
 function escapeCsv(value) {
   const s = String(value ?? '');
@@ -13,11 +14,13 @@ function escapeCsv(value) {
 }
 
 async function sendCsvFromTransactions(client, message, senderId, txRows, title) {
-  const header = ['date', 'type', 'amount', 'currency', 'category', 'description', 'items', 'receipt_path'];
+  const includeReceipt = String(process.env.EXPORT_INCLUDE_RECEIPT_PATH || 'false').toLowerCase() === 'true';
+  const header = ['date', 'type', 'amount', 'currency', 'category', 'merchant', 'description', 'items'];
+  if (includeReceipt) header.push('receipt_path');
   const lines = [header.join(',')];
   txRows.forEach((tx) => {
     const items = (tx.items || [])
-      .map((it) => `${it.item_name} x${it.quantity} @${it.price}`)
+      .map((it) => `${maskSecrets(it.item_name)} x${it.quantity} @${it.price}`)
       .join(' | ');
     const row = [
       tx.transaction_date,
@@ -25,11 +28,12 @@ async function sendCsvFromTransactions(client, message, senderId, txRows, title)
       tx.amount,
       tx.currency || 'IDR',
       tx.category,
-      tx.description || '',
+      tx.merchant || '',
+      maskSecrets(tx.description || ''),
       items,
-      tx.receipt_path || '',
-    ].map(escapeCsv);
-    lines.push(row.join(','));
+    ];
+    if (includeReceipt) row.push(tx.receipt_path || '');
+    lines.push(row.map(escapeCsv).join(','));
   });
   const csv = lines.join('\n');
   if (csv.length < 55000) {
@@ -47,6 +51,7 @@ async function sendCsvFromTransactions(client, message, senderId, txRows, title)
 }
 
 async function sendCsvPerItem(client, message, senderId, txRows, title) {
+  const includeReceipt = String(process.env.EXPORT_INCLUDE_RECEIPT_PATH || 'false').toLowerCase() === 'true';
   const header = [
     'transaction_id',
     'date',
@@ -54,12 +59,13 @@ async function sendCsvPerItem(client, message, senderId, txRows, title) {
     'amount',
     'currency',
     'category',
+    'merchant',
     'description',
     'item_name',
     'quantity',
     'price',
-    'receipt_path',
   ];
+  if (includeReceipt) header.push('receipt_path');
   const lines = [header.join(',')];
   txRows.forEach((tx) => {
     const items = tx.items && tx.items.length > 0 ? tx.items : [null];
@@ -71,13 +77,14 @@ async function sendCsvPerItem(client, message, senderId, txRows, title) {
         tx.amount,
         tx.currency || 'IDR',
         tx.category,
-        tx.description || '',
-        it ? it.item_name : '',
+        tx.merchant || '',
+        maskSecrets(tx.description || ''),
+        it ? maskSecrets(it.item_name) : '',
         it ? it.quantity : '',
         it ? it.price : '',
-        tx.receipt_path || '',
-      ].map(escapeCsv);
-      lines.push(row.join(','));
+      ];
+      if (includeReceipt) row.push(tx.receipt_path || '');
+      lines.push(row.map(escapeCsv).join(','));
     });
   });
   const csv = lines.join('\n');

@@ -15,6 +15,7 @@ async function insertTransaction(accountId, txData, actorUserId = null) {
       tipe,
       nominal,
       kategori,
+      merchant,
       keterangan,
       receipt_path,
       receipt_hash,
@@ -31,13 +32,14 @@ async function insertTransaction(accountId, txData, actorUserId = null) {
         amount,
         currency,
         category,
+        merchant,
         description,
         receipt_path,
         receipt_hash,
         text_hash,
         fingerprint_hash
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const [mainResult] = await connection.execute(mainSql, [
       accountId,
@@ -46,6 +48,7 @@ async function insertTransaction(accountId, txData, actorUserId = null) {
       nominal,
       currency,
       kategori,
+      merchant || null,
       keterangan,
       receipt_path,
       receipt_hash || null,
@@ -75,6 +78,7 @@ async function insertTransaction(accountId, txData, actorUserId = null) {
       nominal,
       currency,
       kategori,
+      merchant,
       receipt_path,
       receipt_hash,
       text_hash,
@@ -93,7 +97,7 @@ async function getTransactions(accountId, startDate, endDate, targetCurrency = n
   await ensureSchema();
 
   const mainSql = `
-    SELECT id, transaction_date, type, amount, currency, category, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
+    SELECT id, transaction_date, type, amount, currency, category, merchant, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
     FROM transactions
     WHERE account_id = ? AND transaction_date >= ? AND transaction_date <= ?
     ORDER BY transaction_date DESC, id DESC
@@ -139,7 +143,7 @@ async function getLastTransactions(accountId, limit, targetCurrency = null) {
   await ensureSchema();
 
   const mainSql = `
-    SELECT id, transaction_date, type, amount, currency, category, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
+    SELECT id, transaction_date, type, amount, currency, category, merchant, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
     FROM transactions
     WHERE account_id = ?
     ORDER BY transaction_date DESC, id DESC
@@ -187,7 +191,7 @@ async function deleteLastTransaction(accountId, actorUserId = null) {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute(
-      `SELECT id, transaction_date, type, amount, currency, category, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
+      `SELECT id, transaction_date, type, amount, currency, category, merchant, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
        FROM transactions
        WHERE account_id = ?
        ORDER BY id DESC
@@ -216,13 +220,14 @@ async function deleteLastTransaction(accountId, actorUserId = null) {
         amount,
         currency,
         category,
+        merchant,
         description,
         receipt_path,
         receipt_hash,
         text_hash,
         fingerprint_hash
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         transactionId,
         accountId,
@@ -232,6 +237,7 @@ async function deleteLastTransaction(accountId, actorUserId = null) {
         tx.amount,
         tx.currency,
         tx.category,
+        tx.merchant,
         tx.description,
         tx.receipt_path,
         tx.receipt_hash,
@@ -270,7 +276,7 @@ async function searchTransactions(accountId, keyword, options = null) {
   const searchPattern = `%${keyword}%`;
 
   const mainSql = `
-    SELECT DISTINCT t.id, t.transaction_date, t.type, t.amount, t.currency, t.category, t.description, t.receipt_path, t.receipt_hash
+    SELECT DISTINCT t.id, t.transaction_date, t.type, t.amount, t.currency, t.category, t.merchant, t.description, t.receipt_path, t.receipt_hash
     FROM transactions t
     LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
     WHERE t.account_id = ? AND (t.description LIKE ? OR ti.item_name LIKE ?)
@@ -390,7 +396,7 @@ async function restoreLastDeletedTransaction(accountId, actorUserId = null) {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute(
-      `SELECT id, original_transaction_id, transaction_date, type, amount, currency, category, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
+      `SELECT id, original_transaction_id, transaction_date, type, amount, currency, category, merchant, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
        FROM deleted_transactions
        WHERE account_id = ?
        ORDER BY deleted_at DESC, id DESC
@@ -416,13 +422,14 @@ async function restoreLastDeletedTransaction(accountId, actorUserId = null) {
         amount,
         currency,
         category,
+        merchant,
         description,
         receipt_path,
         receipt_hash,
         text_hash,
         fingerprint_hash
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         accountId,
         del.transaction_date,
@@ -430,6 +437,7 @@ async function restoreLastDeletedTransaction(accountId, actorUserId = null) {
         del.amount,
         del.currency,
         del.category,
+        del.merchant,
         del.description,
         del.receipt_path,
         del.receipt_hash,
@@ -468,7 +476,7 @@ async function restoreLastDeletedTransaction(accountId, actorUserId = null) {
 async function getTransactionsForExport(accountId, startDate, endDate) {
   await ensureSchema();
   const [txRows] = await pool.execute(
-    `SELECT id, transaction_date, type, amount, currency, category, description, receipt_path
+    `SELECT id, transaction_date, type, amount, currency, category, merchant, description, receipt_path
      FROM transactions
      WHERE account_id = ? AND transaction_date >= ? AND transaction_date <= ?
      ORDER BY transaction_date ASC, id ASC`,
@@ -512,6 +520,29 @@ async function tryMarkSummaryNotification(accountId, kind, periodKey) {
   return (result.affectedRows || 0) > 0;
 }
 
+async function detachOldReceipts(retentionDays) {
+  await ensureSchema();
+  const days = Math.max(parseInt(retentionDays, 10) || 0, 1);
+  const [rows] = await pool.execute(
+    `SELECT id, account_id, receipt_path
+     FROM transactions
+     WHERE receipt_path IS NOT NULL
+       AND created_at < (NOW() - INTERVAL ? DAY)
+     ORDER BY id ASC
+     LIMIT 500`,
+    [days],
+  );
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  await pool.query(
+    `UPDATE transactions
+     SET receipt_path = NULL, receipt_hash = NULL
+     WHERE id IN (?)`,
+    [ids],
+  );
+  return rows.map((r) => ({ id: r.id, account_id: r.account_id, receipt_path: r.receipt_path }));
+}
+
 module.exports = {
   insertTransaction,
   getTransactions,
@@ -527,4 +558,5 @@ module.exports = {
   getTransactionsForExport,
   getSummaryTotals,
   tryMarkSummaryNotification,
+  detachOldReceipts,
 };

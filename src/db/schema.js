@@ -69,6 +69,7 @@ async function ensureSchema() {
         amount DECIMAL(15, 2) NOT NULL,
         currency CHAR(3) DEFAULT 'IDR',
         category VARCHAR(255) NOT NULL,
+        merchant VARCHAR(255) NULL,
         description TEXT,
         receipt_path VARCHAR(255),
         receipt_hash VARCHAR(64) NULL,
@@ -186,6 +187,18 @@ async function ensureSchema() {
     `);
 
     await pool.execute(`
+      CREATE TABLE IF NOT EXISTS merchant_normalization_rules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        account_id INT NOT NULL,
+        keyword VARCHAR(255) NOT NULL,
+        merchant_name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_merchant_rule (account_id, keyword),
+        INDEX idx_merchant_rules_account (account_id)
+      )
+    `);
+
+    await pool.execute(`
       CREATE TABLE IF NOT EXISTS summary_notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         account_id INT NOT NULL,
@@ -222,6 +235,7 @@ async function ensureSchema() {
         amount DECIMAL(15, 2) NOT NULL,
         currency CHAR(3) DEFAULT 'IDR',
         category VARCHAR(255) NOT NULL,
+        merchant VARCHAR(255) NULL,
         description TEXT,
         receipt_path VARCHAR(255),
         receipt_hash VARCHAR(64) NULL,
@@ -252,6 +266,11 @@ async function ensureSchema() {
       await pool.execute(`ALTER TABLE transactions ADD COLUMN receipt_hash VARCHAR(64) NULL`);
     }
 
+    if (!(await columnExists('transactions', 'merchant'))) {
+      await pool.execute(`ALTER TABLE transactions ADD COLUMN merchant VARCHAR(255) NULL`);
+      await tryCreateIndex(`CREATE INDEX idx_transactions_account_merchant ON transactions (account_id, merchant)`);
+    }
+
     if (!(await columnExists('transactions', 'text_hash'))) {
       await pool.execute(`ALTER TABLE transactions ADD COLUMN text_hash VARCHAR(64) NULL`);
       await tryCreateIndex(
@@ -264,6 +283,21 @@ async function ensureSchema() {
       await tryCreateIndex(
         `CREATE INDEX idx_transactions_account_fingerprint_hash ON transactions (account_id, fingerprint_hash)`,
       );
+    }
+
+    if (!(await columnExists('deleted_transactions', 'merchant'))) {
+      await pool.execute(`ALTER TABLE deleted_transactions ADD COLUMN merchant VARCHAR(255) NULL`);
+      await tryCreateIndex(
+        `CREATE INDEX idx_deleted_transactions_account_merchant ON deleted_transactions (account_id, merchant)`,
+      );
+    }
+
+    if (!(await columnExists('deleted_transactions', 'text_hash'))) {
+      await pool.execute(`ALTER TABLE deleted_transactions ADD COLUMN text_hash VARCHAR(64) NULL`);
+    }
+
+    if (!(await columnExists('deleted_transactions', 'fingerprint_hash'))) {
+      await pool.execute(`ALTER TABLE deleted_transactions ADD COLUMN fingerprint_hash VARCHAR(64) NULL`);
     }
 
     if (!(await columnExists('user_settings', 'active_account_id'))) {

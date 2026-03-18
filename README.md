@@ -64,11 +64,37 @@ Tunggu beberapa saat, sebuah QR code akan muncul di terminal. Pindai (scan) QR c
 
 Setelah berhasil, Anda akan melihat pesan "Client is ready!" di terminal.
 
+### Menjalankan dengan Docker
+
+```bash
+docker compose up --build
+```
+
+### Menjalankan dengan PM2
+
+```bash
+npm install -g pm2
+npm run start:pm2
+```
+
 ### HTTP Server (Express)
 
 - Default berjalan di port `3000` (bisa diubah dengan env `PORT`)
 - Endpoint healthcheck: `GET /health`
+- Endpoint metrics: `GET /metrics`
 - Endpoint `/api/*` bisa diaktifkan dengan env `HTTP_API_KEY` (request harus membawa header `x-api-key`)
+- Import statement CSV: `POST /api/import/statement`
+
+Catatan Docker:
+- Di Docker, gunakan env `PYTHON_BIN=python3` jika command `python` tidak tersedia.
+
+Contoh request import:
+```bash
+curl -X POST http://localhost:3000/api/import/statement ^
+  -H "content-type: application/json" ^
+  -H "x-api-key: change-me" ^
+  -d "{\"accountId\":1,\"dryRun\":true,\"csv\":\"date,amount,description\\n2026-03-01,12000,Grab Food\\n\"}"
+```
 
 ## 🤖 Cara Menggunakan Bot
 
@@ -118,6 +144,8 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
   - `kategori tambah <nama>` – Menambah kategori baru.
   - `kategori map <keyword> => <kategori>` – Mapping keyword merchant ke kategori.
   - `kategori rules` – Menampilkan daftar mapping.
+  - `merchant map <keyword> => <merchant>` – Normalisasi nama merchant.
+  - `merchant rules` – Menampilkan daftar mapping merchant.
 
 Bot akan membalas dengan konfirmasi jika data berhasil dicatat di database.
 
@@ -149,6 +177,12 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 - Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, normalize, kontras, denoise ringan) sebelum dikenali oleh EasyOCR.
 - Meningkatkan akurasi pengenalan teks pada gambar dengan pencahayaan buruk atau noise.
 - EasyOCR mencoba auto-rotate (0/90/180/270) dan akan fallback ke gambar mentah jika hasil preprocessing kosong.
+- Ada post-processing untuk memperbaiki karakter yang sering tertukar (contoh: `01G` → `BIG`, `7OOGR` → `700GR`).
+
+Env terkait OCR:
+- `OCR_TIMEOUT_MS` (default 120000)
+- `PYTHON_BIN` (default `python`)
+- `OCR_LEXICON_EXTRA` (opsional, daftar kata dipisah koma untuk koreksi OCR, contoh: `OCR_LEXICON_EXTRA=INDOMARET,NISSIN,TANGO`)
 
 ### ⚡ Caching Respons AI
 - Hasil pemrosesan AI untuk teks yang sama akan disimpan dalam cache menggunakan `lru-cache`.
@@ -187,6 +221,11 @@ Contoh:
 - Mode ringkas: `export ringkas bulan ini`
 - Mode detail per-item: `export detail bulan ini`
 - Range custom: `export 2026-03-01 2026-03-31`
+- Secara default kolom `receipt_path` tidak ditampilkan. Aktifkan dengan env `EXPORT_INCLUDE_RECEIPT_PATH=true`.
+
+### ⏳ Retention Struk
+- Fitur retention bersifat opsional (default nonaktif) agar struk tetap tersedia untuk kebutuhan audit.
+- Aktifkan dengan env `RECEIPT_RETENTION_DAYS` (mis. `RECEIPT_RETENTION_DAYS=30`) untuk menghapus struk lama setelah N hari.
 
 ### 📎 Ambil Struk Terakhir
 - Kirim `struk terakhir` untuk mendapatkan file struk terakhir yang tersimpan.

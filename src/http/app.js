@@ -1,6 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { logger } = require('../logger');
 
 function createApp({ apiKey } = {}) {
   const app = express();
@@ -34,6 +35,20 @@ function createApp({ apiKey } = {}) {
   );
 
   app.use(express.json({ limit: '256kb' }));
+
+  app.use((req, res, next) => {
+    const start = process.hrtime.bigint();
+    res.on('finish', () => {
+      const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+      logger.info('http_request', {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        ms: Math.round(elapsedMs),
+      });
+    });
+    next();
+  });
 
   app.use((req, res, next) => {
     if (!req.path.startsWith('/api/')) return next();

@@ -27,18 +27,45 @@ def main():
     
     reader = easyocr.Reader(['en', 'id'], gpu=False, verbose=False)
 
-    result = reader.readtext(
-        image_path,
+    allowlist = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/-()"
+
+    def readtext_safe(**kwargs):
+        try:
+            return reader.readtext(**kwargs)
+        except TypeError:
+            minimal = {
+                "image": kwargs.get("image"),
+                "detail": kwargs.get("detail", 0),
+                "paragraph": kwargs.get("paragraph", False),
+            }
+            return reader.readtext(**minimal)
+
+    result = readtext_safe(
+        image=image_path,
         detail=0,
         paragraph=False,
+        decoder="greedy",
+        allowlist=allowlist,
+        text_threshold=0.6,
+        low_text=0.3,
+        link_threshold=0.4,
+        mag_ratio=1.5,
     )
 
     if not result:
-        result = reader.readtext(
-            image_path,
+        result = readtext_safe(
+            image=image_path,
             detail=0,
             paragraph=True,
             rotation_info=[0, 90, 180, 270],
+            decoder="beamsearch",
+            allowlist=allowlist,
+            text_threshold=0.55,
+            low_text=0.25,
+            link_threshold=0.4,
+            mag_ratio=1.7,
+            contrast_ths=0.1,
+            adjust_contrast=0.7,
         )
     
     # Combine lines with newline

@@ -2,6 +2,7 @@ const { Jimp, JimpMime } = require('jimp');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { postProcessOcrText } = require('./ocr/postprocess');
 
 /**
  * Preprocess image to improve OCR accuracy.
@@ -35,6 +36,7 @@ async function recognizeText(base64Image) {
   let tempFallbackPath = null;
   try {
     const timeoutMs = Math.max(parseInt(process.env.OCR_TIMEOUT_MS || '120000', 10) || 120000, 5000);
+    const pythonBin = process.env.PYTHON_BIN || 'python';
     const imageBuffer = Buffer.from(base64Image, 'base64');
     const processedBuffer = await preprocessImage(imageBuffer);
 
@@ -49,7 +51,7 @@ async function recognizeText(base64Image) {
     const runPython = async (filePath) => {
       const pythonScript = path.join(__dirname, 'ocr_easyocr.py');
       const result = await new Promise((resolve, reject) => {
-        const python = spawn('python', [pythonScript, filePath], { windowsHide: true });
+        const python = spawn(pythonBin, [pythonScript, filePath], { windowsHide: true });
         let stdout = '';
         let stderr = '';
 
@@ -105,7 +107,7 @@ async function recognizeText(base64Image) {
     }
 
     console.log('Text recognition successful.');
-    return result;
+    return postProcessOcrText(result);
   } catch (error) {
     console.error('Error during OCR processing:', error);
     return '';

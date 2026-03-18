@@ -1,0 +1,32 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: wa_finance
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  app:
+    build: .
+    depends_on:
+      - mysql
+    environment:
+      PORT: 3000
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: wa_finance
+      HTTP_API_KEY: change-me
+      OCR_TIMEOUT_MS: 120000
+      PYTHON_BIN: python3
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+
+volumes:
+  mysql_data:

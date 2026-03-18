@@ -7,6 +7,7 @@ const {
   findTransactionByTextHash,
   findTransactionByFingerprint,
   resolveCategoryFromText,
+  resolveMerchantFromText,
 } = require('../../db');
 const { splitIntoTransactions, formatDateYyyyMmDd } = require('../utils');
 const { setUserState } = require('../state');
@@ -76,6 +77,10 @@ async function processTransaction(message, senderId, accountId) {
         const resolvedCategory = await resolveCategoryFromText(accountId, structuredData.keterangan || part);
         if (resolvedCategory) {
           structuredData.kategori = resolvedCategory;
+        }
+        const resolvedMerchant = await resolveMerchantFromText(accountId, structuredData.keterangan || part);
+        if (resolvedMerchant) {
+          structuredData.merchant = resolvedMerchant;
         }
         structuredData.receipt_path = receiptPath;
         structuredData.receipt_hash = receiptHash;
