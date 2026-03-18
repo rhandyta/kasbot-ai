@@ -216,11 +216,13 @@ async function handleAccess(message, senderId, accountId, rawMessageBody) {
 async function handleHelp(message, canWrite) {
   const mode = canWrite ? 'owner' : 'monitor';
   let txt = `📌 *Menu (${mode})*\n\n`;
-  txt += `- laporan\n- detail (saat diminta)\n- cari <keyword>\n- export <periode>\n- struk terakhir\n\n`;
+  txt += `- laporan\n- detail / detail 2\n- cari <keyword> / cari <keyword> page 2\n- export ringkas <periode>\n- export detail <periode>\n- export 2026-03-01 2026-03-31\n- struk terakhir\n\n`;
   if (canWrite) {
-    txt += `- kirim teks transaksi atau foto struk\n- undo / batal\n- edit transaksi terakhir jumlah <angka>\n- set currency <IDR|USD|EUR>\n\n`;
+    txt += `- kirim teks transaksi atau foto struk\n- undo / batal\n- undo kembali\n- edit transaksi terakhir jumlah <angka>\n- set currency <IDR|USD|EUR>\n\n`;
+    txt += `Template koreksi sebelum simpan:\n- ubah transaksi 1 jumlah 50000\n- ubah transaksi 1 kategori Makan\n- ubah transaksi 1 item tambah Ayam 1 25000\n- ubah transaksi 1 item ubah 1 2 20000\n- ubah transaksi 1 item hapus 1\n\n`;
     txt += `- budget set <kategori> <jumlah>\n- budget list\n\n`;
     txt += `- ulang tambah <in|out> <jumlah> <kategori> ; <keterangan> ; <tgl 1-28>\n- ulang list\n- ulang hapus <id>\n\n`;
+    txt += `- kategori list\n- kategori tambah <nama>\n- kategori map <keyword> => <kategori>\n- kategori rules\n\n`;
     txt += `- token\n- token reset\n- invite\n- invite editor\n- invite list\n- invite cabut <id>\n- akses list\n- akses cabut <user_id>\n`;
   } else {
     txt += `- monitor off\n`;

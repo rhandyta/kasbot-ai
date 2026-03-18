@@ -52,12 +52,16 @@ async function removeRecurringRule(accountId, actorUserId, ruleId) {
 function computeNextMonthlyDate(baseDate, dayOfMonth) {
   const d = new Date(baseDate);
   const target = new Date(d.getFullYear(), d.getMonth() + 1, dayOfMonth);
-  return target.toISOString().slice(0, 10);
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const day = String(target.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 async function runDueRecurring(accountId) {
   await ensureSchema();
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [rows] = await pool.execute(
     `SELECT id, type, amount, currency, category, description, day_of_month, next_run_date
      FROM recurring_rules
@@ -93,4 +97,30 @@ async function runDueRecurring(accountId) {
   return created;
 }
 
-module.exports = { addRecurringRule, listRecurringRules, removeRecurringRule, runDueRecurring };
+let runAllLock = false;
+
+async function runDueRecurringAll() {
+  await ensureSchema();
+  if (runAllLock) return { skipped: true, created: 0 };
+  runAllLock = true;
+  try {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const [rows] = await pool.execute(
+      `SELECT DISTINCT account_id
+       FROM recurring_rules
+       WHERE active = 1 AND next_run_date <= ?`,
+      [today],
+    );
+    let createdCount = 0;
+    for (const r of rows) {
+      const created = await runDueRecurring(r.account_id);
+      createdCount += created.length;
+    }
+    return { skipped: false, created: createdCount };
+  } finally {
+    runAllLock = false;
+  }
+}
+
+module.exports = { addRecurringRule, listRecurringRules, removeRecurringRule, runDueRecurring, runDueRecurringAll };

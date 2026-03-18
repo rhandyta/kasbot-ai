@@ -332,6 +332,23 @@ async function revokeMember(accountId, actorUserId, memberUserId) {
   await logAudit(accountId, actorUserId, 'member_revoke', 'account_member', memberUserId, {});
 }
 
+async function listAccountOwners(accountId) {
+  await ensureSchema();
+  const [rows] = await pool.execute(
+    `SELECT user_id FROM account_members WHERE account_id = ? AND role = 'owner' ORDER BY id ASC`,
+    [accountId],
+  );
+  return rows.map((r) => r.user_id);
+}
+
+async function listAllOwnerAccounts() {
+  await ensureSchema();
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT account_id FROM account_members WHERE role = 'owner' ORDER BY account_id ASC`,
+  );
+  return rows.map((r) => r.account_id);
+}
+
 module.exports = {
   ensureUserSettingsRow,
   getActiveAccountContext,
@@ -347,4 +364,6 @@ module.exports = {
   revokeInvite,
   listMembers,
   revokeMember,
+  listAccountOwners,
+  listAllOwnerAccounts,
 };

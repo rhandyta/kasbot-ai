@@ -1,4 +1,11 @@
-const { deleteLastTransaction, searchTransactions, updateTransaction, getLastTransactions, setUserCurrency } = require('../../db');
+const {
+  deleteLastTransaction,
+  restoreLastDeletedTransaction,
+  searchTransactions,
+  updateTransaction,
+  getLastTransactions,
+  setUserCurrency,
+} = require('../../db');
 const { formatMoney } = require('../utils');
 
 async function handleCancelTransaction(message, senderId, accountId) {
@@ -11,16 +18,30 @@ async function handleCancelTransaction(message, senderId, accountId) {
   }
 }
 
+async function handleRestoreLastTransaction(message, senderId, accountId) {
+  try {
+    const restoredId = await restoreLastDeletedTransaction(accountId, senderId);
+    await message.reply(`✅ Transaksi berhasil dikembalikan (ID baru: ${restoredId}).`);
+  } catch (error) {
+    await message.reply(error.message || 'Gagal mengembalikan transaksi.');
+  }
+}
+
 async function handleSearch(message, accountId, keyword) {
   if (!keyword.trim()) {
     return message.reply('Masukkan kata kunci pencarian. Contoh: "cari beli ayam"');
   }
+  const match = keyword.match(/^(.*?)(?:\s+page\s+(\d+))?$/i);
+  const baseKeyword = (match?.[1] || '').trim();
+  const page = match?.[2] ? Math.max(parseInt(match[2], 10), 1) : 1;
+  const limit = 20;
+  const offset = (page - 1) * limit;
   try {
-    const transactions = await searchTransactions(accountId, keyword);
+    const transactions = await searchTransactions(accountId, baseKeyword, { limit, offset });
     if (transactions.length === 0) {
-      return message.reply(`Tidak ditemukan transaksi dengan kata kunci "${keyword}".`);
+      return message.reply(`Tidak ditemukan transaksi dengan kata kunci "${baseKeyword}".`);
     }
-    let reply = `🔍 *Hasil pencarian untuk "${keyword}":*\n\n`;
+    let reply = `🔍 *Hasil pencarian untuk "${baseKeyword}" (page ${page}):*\n\n`;
     transactions.forEach((tx, idx) => {
       const sign = tx.type === 'IN' ? '+' : '-';
       const date = new Date(tx.transaction_date).toLocaleDateString('id-ID', {
@@ -35,6 +56,9 @@ async function handleSearch(message, accountId, keyword) {
       }
       reply += '\n';
     });
+    if (transactions.length === limit) {
+      reply += `Ketik: cari ${baseKeyword} page ${page + 1}\n`;
+    }
     await message.reply(reply);
   } catch (error) {
     console.error('Search error:', error);
@@ -80,4 +104,10 @@ async function handleSetCurrency(message, senderId, currency) {
   }
 }
 
-module.exports = { handleCancelTransaction, handleSearch, handleEditTransaction, handleSetCurrency };
+module.exports = {
+  handleCancelTransaction,
+  handleRestoreLastTransaction,
+  handleSearch,
+  handleEditTransaction,
+  handleSetCurrency,
+};

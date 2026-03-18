@@ -1,6 +1,7 @@
 const { createApp } = require('./http/app');
 const { registerRoutes } = require('./http/routes');
 const { startBot } = require('./bot');
+const { runDueRecurringAll, ensureSchema } = require('./db');
 
 function startHttpServer() {
   const port = parseInt(process.env.PORT || '3000', 10);
@@ -21,3 +22,10 @@ function startHttpServer() {
 
 startHttpServer();
 startBot();
+
+ensureSchema().then(() => {
+  runDueRecurringAll().catch((e) => console.error('Recurring runner error:', e));
+  setInterval(() => {
+    runDueRecurringAll().catch((e) => console.error('Recurring runner error:', e));
+  }, 5 * 60 * 1000);
+});

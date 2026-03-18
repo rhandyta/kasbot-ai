@@ -35,15 +35,24 @@ function presentReport(message, senderId, transactions, periodName) {
 Balas "detail" untuk melihat rincian transaksi.`;
 
   message.reply(summaryMessage);
-  setUserState(senderId, { step: 'awaiting_detail_request', transactions });
+  setUserState(senderId, { step: 'awaiting_detail_request', transactions, pageSize: 15 });
 }
 
-async function handleDetailRequest(message, senderId) {
+async function handleDetailRequest(message, senderId, messageBody) {
   const state = getUserState(senderId);
   const transactions = state?.transactions || [];
+  const pageSize = state?.pageSize || 15;
+  const match = (messageBody || '').match(/^detail(?:\s+(\d+))?$/i);
+  const page = match?.[1] ? Math.max(parseInt(match[1], 10), 1) : 1;
+  const offset = (page - 1) * pageSize;
+  const pageItems = transactions.slice(offset, offset + pageSize);
+  if (pageItems.length === 0) {
+    await message.reply('Tidak ada transaksi di halaman itu.');
+    return;
+  }
   let detailMessage = '📜 *Rincian Transaksi*\n\n';
 
-  transactions.forEach((tx) => {
+  pageItems.forEach((tx) => {
     const sign = tx.type === 'IN' ? '+' : '-';
     const date = new Date(tx.transaction_date).toLocaleDateString('id-ID', {
       day: '2-digit',
@@ -59,8 +68,12 @@ async function handleDetailRequest(message, senderId) {
     detailMessage += '\n';
   });
 
+  if (offset + pageSize < transactions.length) {
+    detailMessage += `Halaman berikutnya: detail ${page + 1}\n`;
+  } else {
+    clearUserState(senderId);
+  }
   message.reply(detailMessage);
-  clearUserState(senderId);
 }
 
 async function handleReportPeriodSelection(message, senderId, accountId, choice) {
@@ -111,8 +124,8 @@ async function handleStatefulMessage(message, senderId, messageBody, accountId) 
     return true;
   }
 
-  if (currentState.step === 'awaiting_detail_request' && messageBody === 'detail') {
-    await handleDetailRequest(message, senderId);
+  if (currentState.step === 'awaiting_detail_request' && messageBody.startsWith('detail')) {
+    await handleDetailRequest(message, senderId, messageBody);
     return true;
   }
 

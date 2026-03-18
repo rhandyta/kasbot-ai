@@ -5,6 +5,7 @@ const transactions = require('./transactions');
 const budgets = require('./budgets');
 const recurring = require('./recurring');
 const userSettings = require('./userSettings');
+const categories = require('./categories');
 
 module.exports = {
   ensureSchema,
@@ -12,6 +13,7 @@ module.exports = {
   ...transactions,
   ...budgets,
   ...recurring,
+  ...categories,
   ...userSettings,
   convertAmount,
 };

@@ -23,6 +23,16 @@ function createApp({ apiKey } = {}) {
     }),
   );
 
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 60 * 1000,
+      limit: 30,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   app.use(express.json({ limit: '256kb' }));
 
   app.use((req, res, next) => {

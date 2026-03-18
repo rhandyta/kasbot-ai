@@ -28,8 +28,12 @@ def main():
     # Initialize reader (English and Indonesian, GPU if available)
     reader = easyocr.Reader(['en', 'id'], gpu=False, verbose=False)
     
-    # Perform OCR
-    result = reader.readtext(image_path, detail=0, paragraph=False)
+    result = reader.readtext(
+        image_path,
+        detail=0,
+        paragraph=True,
+        rotation_info=[0, 90, 180, 270],
+    )
     
     # Combine lines with newline
     text = "\n".join(result)

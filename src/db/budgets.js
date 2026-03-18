@@ -44,4 +44,19 @@ async function getSpendingByCategory(accountId, startDate, endDate, targetCurren
   return totals;
 }
 
-module.exports = { setMonthlyBudget, listMonthlyBudgets, getSpendingByCategory };
+async function tryMarkBudgetNotification(accountId, monthKey, category, level) {
+  await ensureSchema();
+  const [result] = await pool.execute(
+    `INSERT IGNORE INTO budget_notifications (account_id, month_key, category, level)
+     VALUES (?, ?, ?, ?)`,
+    [accountId, monthKey, category, level],
+  );
+  return (result.affectedRows || 0) > 0;
+}
+
+module.exports = {
+  setMonthlyBudget,
+  listMonthlyBudgets,
+  getSpendingByCategory,
+  tryMarkBudgetNotification,
+};

@@ -17,6 +17,14 @@ async function columnExists(tableName, columnName) {
 async function ensureSchema() {
   if (schemaEnsured) return schemaEnsured;
   schemaEnsured = (async () => {
+    const tryCreateIndex = async (sql) => {
+      try {
+        await pool.execute(sql);
+      } catch (e) {
+        if (!e || e.code !== 'ER_DUP_KEYNAME') throw e;
+      }
+    };
+
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS accounts (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -64,8 +72,12 @@ async function ensureSchema() {
         description TEXT,
         receipt_path VARCHAR(255),
         receipt_hash VARCHAR(64) NULL,
+        text_hash VARCHAR(64) NULL,
+        fingerprint_hash VARCHAR(64) NULL,
         INDEX idx_transactions_account_date (account_id, transaction_date),
-        INDEX idx_transactions_account_receipt_hash (account_id, receipt_hash)
+        INDEX idx_transactions_account_receipt_hash (account_id, receipt_hash),
+        INDEX idx_transactions_account_text_hash (account_id, text_hash),
+        INDEX idx_transactions_account_fingerprint_hash (account_id, fingerprint_hash)
       )
     `);
 
@@ -76,9 +88,14 @@ async function ensureSchema() {
         item_name VARCHAR(255) NOT NULL,
         quantity INT NOT NULL DEFAULT 1,
         price DECIMAL(15, 2) NOT NULL,
-        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+        INDEX idx_transaction_items_tx (transaction_id),
+        INDEX idx_transaction_items_name (item_name)
       )
     `);
+
+    await tryCreateIndex(`CREATE INDEX idx_transaction_items_tx ON transaction_items (transaction_id)`);
+    await tryCreateIndex(`CREATE INDEX idx_transaction_items_name ON transaction_items (item_name)`);
 
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS account_invites (
@@ -145,12 +162,108 @@ async function ensureSchema() {
       )
     `);
 
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        account_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_category (account_id, name),
+        INDEX idx_categories_account (account_id)
+      )
+    `);
+
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS merchant_category_rules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        account_id INT NOT NULL,
+        keyword VARCHAR(255) NOT NULL,
+        category_name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_rule (account_id, keyword),
+        INDEX idx_rules_account (account_id)
+      )
+    `);
+
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS summary_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        account_id INT NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        period_key VARCHAR(32) NOT NULL,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_summary_notif (account_id, kind, period_key),
+        INDEX idx_summary_notif_account (account_id)
+      )
+    `);
+
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS budget_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        account_id INT NOT NULL,
+        month_key CHAR(7) NOT NULL,
+        category VARCHAR(255) NOT NULL,
+        level INT NOT NULL,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_budget_notif (account_id, month_key, category, level),
+        INDEX idx_budget_notif_account (account_id)
+      )
+    `);
+
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS deleted_transactions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        original_transaction_id INT NOT NULL,
+        account_id INT NOT NULL,
+        deleted_by_user_id VARCHAR(255) NULL,
+        deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        transaction_date DATE NOT NULL,
+        type ENUM('IN', 'OUT') NOT NULL,
+        amount DECIMAL(15, 2) NOT NULL,
+        currency CHAR(3) DEFAULT 'IDR',
+        category VARCHAR(255) NOT NULL,
+        description TEXT,
+        receipt_path VARCHAR(255),
+        receipt_hash VARCHAR(64) NULL,
+        text_hash VARCHAR(64) NULL,
+        fingerprint_hash VARCHAR(64) NULL,
+        UNIQUE KEY uniq_deleted_original (account_id, original_transaction_id),
+        INDEX idx_deleted_account (account_id),
+        INDEX idx_deleted_deleted_at (deleted_at)
+      )
+    `);
+
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS deleted_transaction_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        deleted_transaction_id INT NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        price DECIMAL(15, 2) NOT NULL,
+        INDEX idx_deleted_items_deleted_tx (deleted_transaction_id)
+      )
+    `);
+
     if (!(await columnExists('transactions', 'account_id'))) {
       await pool.execute(`ALTER TABLE transactions ADD COLUMN account_id INT NOT NULL DEFAULT 1`);
     }
 
     if (!(await columnExists('transactions', 'receipt_hash'))) {
       await pool.execute(`ALTER TABLE transactions ADD COLUMN receipt_hash VARCHAR(64) NULL`);
+    }
+
+    if (!(await columnExists('transactions', 'text_hash'))) {
+      await pool.execute(`ALTER TABLE transactions ADD COLUMN text_hash VARCHAR(64) NULL`);
+      await tryCreateIndex(
+        `CREATE INDEX idx_transactions_account_text_hash ON transactions (account_id, text_hash)`,
+      );
+    }
+
+    if (!(await columnExists('transactions', 'fingerprint_hash'))) {
+      await pool.execute(`ALTER TABLE transactions ADD COLUMN fingerprint_hash VARCHAR(64) NULL`);
+      await tryCreateIndex(
+        `CREATE INDEX idx_transactions_account_fingerprint_hash ON transactions (account_id, fingerprint_hash)`,
+      );
     }
 
     if (!(await columnExists('user_settings', 'active_account_id'))) {

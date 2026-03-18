@@ -1,11 +1,33 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const { ensureSchema, getActiveAccountContext, runDueRecurring } = require('../db');
-const { isGroupChatId } = require('./utils');
+const {
+  ensureSchema,
+  getActiveAccountContext,
+  listAllOwnerAccounts,
+  listAccountOwners,
+  getSummaryTotals,
+  tryMarkSummaryNotification,
+} = require('../db');
+const { isGroupChatId, formatDateYyyyMmDd } = require('./utils');
 const { getUserState, clearUserState } = require('./state');
 const report = require('./report');
 const account = require('./account');
 const tx = require('./transaction');
+const category = require('./category');
+
+const attemptBuckets = new Map();
+
+function allowAttempt(bucketKey, limit, windowMs) {
+  const now = Date.now();
+  const existing = attemptBuckets.get(bucketKey);
+  if (!existing || now > existing.resetAt) {
+    attemptBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (existing.count >= limit) return false;
+  existing.count += 1;
+  return true;
+}
 
 function createBot() {
   const dbReady = ensureSchema();
@@ -21,6 +43,56 @@ function createBot() {
 
   client.on('ready', () => {
     console.log('Client is ready!');
+    const runSummaries = async () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+
+      if (hour === 21 && minute <= 4) {
+        const dayKey = formatDateYyyyMmDd(now);
+        const accounts = await listAllOwnerAccounts();
+        for (const accountId of accounts) {
+          const first = await tryMarkSummaryNotification(accountId, 'daily', dayKey);
+          if (!first) continue;
+          const totals = await getSummaryTotals(accountId, dayKey, dayKey);
+          const owners = await listAccountOwners(accountId);
+          const lines = totals.map((r) => `- ${r.type} ${r.currency}: ${Math.round(Number(r.total) || 0)}`).join('\n');
+          const msg = `🧾 Ringkasan harian (${dayKey})\n${lines || '- (tidak ada transaksi)'}`;
+          for (const owner of owners) {
+            try {
+              await client.sendMessage(owner, msg);
+            } catch {}
+          }
+        }
+      }
+
+      if (now.getDay() === 1 && hour === 9 && minute <= 4) {
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+        const startKey = formatDateYyyyMmDd(start);
+        const endKey = formatDateYyyyMmDd(end);
+        const weekKey = startKey;
+        const accounts = await listAllOwnerAccounts();
+        for (const accountId of accounts) {
+          const first = await tryMarkSummaryNotification(accountId, 'weekly', weekKey);
+          if (!first) continue;
+          const totals = await getSummaryTotals(accountId, startKey, endKey);
+          const owners = await listAccountOwners(accountId);
+          const lines = totals.map((r) => `- ${r.type} ${r.currency}: ${Math.round(Number(r.total) || 0)}`).join('\n');
+          const msg = `🧾 Ringkasan mingguan (${startKey} s/d ${endKey})\n${lines || '- (tidak ada transaksi)'}`;
+          for (const owner of owners) {
+            try {
+              await client.sendMessage(owner, msg);
+            } catch {}
+          }
+        }
+      }
+    };
+
+    runSummaries().catch(() => {});
+    setInterval(() => {
+      runSummaries().catch(() => {});
+    }, 60 * 1000);
   });
 
   client.on('message', async (message) => {
@@ -50,6 +122,7 @@ function createBot() {
       'export',
       'struk terakhir',
       'lihat struk terakhir',
+      'kategori',
     ];
     if (isGroup) {
       const matched = sensitiveInGroup.some((p) => messageBody === p || messageBody.startsWith(`${p} `));
@@ -61,11 +134,6 @@ function createBot() {
 
     const getCtx = async (requireWrite = false) => {
       const ctx = await getActiveAccountContext(senderId);
-      try {
-        await runDueRecurring(ctx.accountId);
-      } catch (e) {
-        console.error('Recurring run failed:', e);
-      }
       if (requireWrite && !ctx.canWrite) {
         await message.reply(
           'Akun aktif kamu sedang mode monitoring (read-only). Kirim "monitor off" untuk kembali ke akun kamu.',
@@ -82,17 +150,34 @@ function createBot() {
       return;
     }
 
+    if (messageBody === 'kategori' || messageBody.startsWith('kategori ')) {
+      const ctx = await getCtx(true);
+      if (!ctx) return;
+      await category.handleCategoryCommand(message, senderId, ctx.accountId, rawMessageBody);
+      return;
+    }
+
     if (messageBody === 'token' || messageBody === 'token saya') {
       await account.handleTokenShow(message, senderId);
       return;
     }
 
     if (messageBody === 'token reset' || messageBody === 'reset token') {
+      const ok = allowAttempt(`${senderId}:token_reset`, 3, 60 * 60 * 1000);
+      if (!ok) {
+        await message.reply('Terlalu banyak percobaan. Coba lagi nanti.');
+        return;
+      }
       await account.handleTokenReset(message, senderId);
       return;
     }
 
     if (messageBody.startsWith('pakai token ') || messageBody.startsWith('gunakan token ')) {
+      const ok = allowAttempt(`${senderId}:join_token`, 5, 10 * 60 * 1000);
+      if (!ok) {
+        await message.reply('Terlalu banyak percobaan token. Coba lagi nanti.');
+        return;
+      }
       const token = rawMessageBody.split(' ').slice(2).join(' ').trim();
       await account.handleJoinToken(message, senderId, token);
       return;
@@ -153,6 +238,11 @@ function createBot() {
     }
 
     if (messageBody.startsWith('invite')) {
+      const ok = allowAttempt(`${senderId}:invite`, 10, 60 * 1000);
+      if (!ok) {
+        await message.reply('Terlalu banyak request. Coba lagi nanti.');
+        return;
+      }
       const ctx = await getCtx(true);
       if (!ctx) return;
       await account.handleInvite(message, senderId, ctx.accountId, rawMessageBody);
@@ -160,9 +250,25 @@ function createBot() {
     }
 
     if (messageBody.startsWith('akses')) {
+      const ok = allowAttempt(`${senderId}:akses`, 10, 60 * 1000);
+      if (!ok) {
+        await message.reply('Terlalu banyak request. Coba lagi nanti.');
+        return;
+      }
       const ctx = await getCtx(true);
       if (!ctx) return;
       await account.handleAccess(message, senderId, ctx.accountId, rawMessageBody);
+      return;
+    }
+
+    if (
+      messageBody === 'undo kembali' ||
+      messageBody === 'undo restore' ||
+      messageBody === 'kembalikan undo'
+    ) {
+      const ctx = await getCtx(true);
+      if (!ctx) return;
+      await tx.handleRestoreLastTransaction(message, senderId, ctx.accountId);
       return;
     }
 

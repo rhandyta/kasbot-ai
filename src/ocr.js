@@ -18,7 +18,9 @@ async function preprocessImage(buffer) {
 
   image
     .greyscale()                 // grayscale
-    .contrast(0.5);               // increase contrast
+    .normalize()
+    .contrast(0.5)
+    .gaussian(1);
   return await image.getBuffer(JimpMime.jpeg);
 }
 
@@ -30,6 +32,7 @@ async function preprocessImage(buffer) {
 async function recognizeText(base64Image) {
   console.log('Recognizing text from image with EasyOCR...');
   let tempFilePath = null;
+  let tempFallbackPath = null;
   try {
     const imageBuffer = Buffer.from(base64Image, 'base64');
     const processedBuffer = await preprocessImage(imageBuffer);
@@ -42,34 +45,59 @@ async function recognizeText(base64Image) {
     tempFilePath = path.join(tempDir, `ocr_${Date.now()}.jpg`);
     fs.writeFileSync(tempFilePath, processedBuffer);
 
-    // Run Python script
-    const pythonScript = path.join(__dirname, 'ocr_easyocr.py');
-    const result = await new Promise((resolve, reject) => {
-      const python = spawn('python', [pythonScript, tempFilePath]);
-      let stdout = '';
-      let stderr = '';
-      python.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      python.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      python.on('close', (code) => {
-        if (code === 0) {
+    const runPython = async (filePath) => {
+      const pythonScript = path.join(__dirname, 'ocr_easyocr.py');
+      const result = await new Promise((resolve, reject) => {
+        const python = spawn('python', [pythonScript, filePath], { windowsHide: true });
+        let stdout = '';
+        let stderr = '';
+
+        const timer = setTimeout(() => {
           try {
-            const parsed = JSON.parse(stdout);
-            resolve(parsed.text);
-          } catch (e) {
-            reject(new Error(`Failed to parse Python output: ${e.message}`));
+            python.kill();
+          } catch {}
+          reject(new Error('EasyOCR timeout'));
+        }, 15000);
+
+        python.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        python.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        python.on('close', (code) => {
+          clearTimeout(timer);
+          if (code === 0) {
+            try {
+              const parsed = JSON.parse(stdout);
+              resolve(parsed.text || '');
+            } catch (e) {
+              reject(new Error(`Failed to parse Python output: ${e.message}`));
+            }
+          } else {
+            reject(new Error(`EasyOCR failed with code ${code}: ${stderr || 'No output'}`));
           }
-        } else {
-          reject(new Error(`EasyOCR failed with code ${code}: ${stderr || 'No output'}`));
-        }
+        });
+        python.on('error', (err) => {
+          clearTimeout(timer);
+          reject(new Error(`Failed to spawn Python process: ${err.message}`));
+        });
       });
-      python.on('error', (err) => {
-        reject(new Error(`Failed to spawn Python process: ${err.message}`));
-      });
-    });
+      return result;
+    };
+
+    let result = '';
+    try {
+      result = await runPython(tempFilePath);
+    } catch (e) {
+      result = '';
+    }
+
+    if (!result || result.trim().length === 0) {
+      tempFallbackPath = path.join(tempDir, `ocr_raw_${Date.now()}.jpg`);
+      fs.writeFileSync(tempFallbackPath, imageBuffer);
+      result = await runPython(tempFallbackPath);
+    }
 
     console.log('Text recognition successful.');
     return result;
@@ -81,6 +109,13 @@ async function recognizeText(base64Image) {
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
+      } catch (e) {
+        console.warn('Could not delete temp file:', e.message);
+      }
+    }
+    if (tempFallbackPath && fs.existsSync(tempFallbackPath)) {
+      try {
+        fs.unlinkSync(tempFallbackPath);
       } catch (e) {
         console.warn('Could not delete temp file:', e.message);
       }

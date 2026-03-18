@@ -85,10 +85,14 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
 
 - **Perintah Tambahan**:
   - `cari <keyword>` – Mencari transaksi berdasarkan kata kunci.
+  - `cari <keyword> page <n>` – Pagination hasil pencarian.
   - `laporan` – Menampilkan menu periode laporan.
-  - `export <periode>` – Export transaksi jadi CSV (contoh: `export bulan ini`).
+  - `export ringkas <periode>` – Export CSV ringkas (contoh: `export ringkas bulan ini`).
+  - `export detail <periode>` – Export CSV per-item (contoh: `export detail bulan ini`).
+  - `export 2026-03-01 2026-03-31` – Export range custom.
   - `struk terakhir` – Mengirim file struk terakhir yang tersimpan.
   - `undo` / `batal` – Membatalkan transaksi terakhir.
+  - `undo kembali` – Mengembalikan transaksi terakhir yang dibatalkan.
   - `edit transaksi terakhir jumlah <jumlah>` – Mengubah nominal transaksi terakhir.
   - `set currency <kode>` – Mengubah preferensi mata uang (IDR, USD, EUR).
   - `help` / `menu` – Menampilkan daftar perintah.
@@ -110,6 +114,10 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
   - `invite cabut <id>` – Mencabut invite tertentu.
   - `akses list` – Melihat member yang punya akses ke akun aktif.
   - `akses cabut <user_id>` – Mencabut akses user tertentu (khusus owner).
+  - `kategori list` – Menampilkan daftar kategori akun.
+  - `kategori tambah <nama>` – Menambah kategori baru.
+  - `kategori map <keyword> => <kategori>` – Mapping keyword merchant ke kategori.
+  - `kategori rules` – Menampilkan daftar mapping.
 
 Bot akan membalas dengan konfirmasi jika data berhasil dicatat di database.
 
@@ -134,8 +142,9 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 - Laporan otomatis akan dikonversi ke mata uang yang Anda pilih.
 
 ### 🖼️ Optimasi OCR dengan Preprocessing Gambar
-- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, kontras, resizing) sebelum dikenali oleh EasyOCR.
+- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, normalize, kontras, denoise ringan) sebelum dikenali oleh EasyOCR.
 - Meningkatkan akurasi pengenalan teks pada gambar dengan pencahayaan buruk atau noise.
+- EasyOCR mencoba auto-rotate (0/90/180/270) dan akan fallback ke gambar mentah jika hasil preprocessing kosong.
 
 ### ⚡ Caching Respons AI
 - Hasil pemrosesan AI untuk teks yang sama akan disimpan dalam cache menggunakan `lru-cache`.
@@ -158,15 +167,21 @@ Contoh:
 ### ✅ Preview & Konfirmasi Sebelum Simpan
 - Setelah kamu kirim transaksi (teks/foto struk), bot akan mengirim preview dulu.
 - Balas `ok` untuk menyimpan atau `batal` untuk membatalkan.
+- Jika ada validasi yang gagal, bot akan minta diperbaiki (atau gunakan `ok paksa`).
 - Bisa koreksi sebelum simpan:
   - `ubah transaksi <n> jumlah <angka>`
   - `ubah transaksi <n> kategori <teks>`
   - `ubah transaksi <n> keterangan <teks>`
   - `ubah transaksi <n> tanggal YYYY-MM-DD`
+  - `ubah transaksi <n> item tambah <nama> <qty> <harga>`
+  - `ubah transaksi <n> item ubah <no> <qty> <harga>`
+  - `ubah transaksi <n> item hapus <no>`
 
 ### 📄 Export CSV
 - Export transaksi jadi CSV untuk periode tertentu.
-- Contoh: `export bulan ini`, `export 3 hari terakhir`, `export tahun ini`, atau `export 10 transaksi terakhir`.
+- Mode ringkas: `export ringkas bulan ini`
+- Mode detail per-item: `export detail bulan ini`
+- Range custom: `export 2026-03-01 2026-03-31`
 
 ### 📎 Ambil Struk Terakhir
 - Kirim `struk terakhir` untuk mendapatkan file struk terakhir yang tersimpan.
@@ -174,6 +189,11 @@ Contoh:
 ### 🎯 Budget Bulanan per Kategori
 - Set budget: `budget set <kategori> <jumlah>`
 - Lihat status: `budget list`
+- Notifikasi otomatis saat pemakaian budget melewati 80% dan 100% (dikirim saat transaksi tersimpan).
+
+### 🧾 Ringkasan Otomatis
+- Ringkasan harian otomatis (sekitar jam 21:00).
+- Ringkasan mingguan otomatis (Senin sekitar jam 09:00, untuk minggu sebelumnya).
 
 ### 🔁 Transaksi Berulang
 - Tambah: `ulang tambah <in|out> <jumlah> <kategori> ; <keterangan> ; <tgl 1-28>`
@@ -182,6 +202,7 @@ Contoh:
 
 ### 🧾 Deteksi Duplikat Struk
 - Jika struk yang sama terkirim lagi, bot akan memberi peringatan “kemungkinan duplikat” di preview.
+- Deteksi menggunakan kombinasi hash gambar, hash teks OCR, dan fingerprint transaksi.
 
 ### 🧾 Audit Log
 - Perubahan penting (buat invite, join token, insert/edit/hapus transaksi) dicatat di tabel `audit_logs`.
