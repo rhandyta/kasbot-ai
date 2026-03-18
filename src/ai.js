@@ -1,10 +1,21 @@
 const { OpenAI } = require('openai');
 const config = require('./config');
+const crypto = require('crypto');
+const LRU = require('lru-cache');
 
-const openai = new OpenAI({
-  apiKey: config.ai.apiKey,
-  baseURL: config.ai.baseUrl,
+const aiCache = new LRU({
+  max: 1000,
+  ttl: 86400 * 1000, // 24 hours in milliseconds
 });
+
+function normalizeText(text) {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getCacheKey(rawText) {
+  const normalized = normalizeText(rawText);
+  return crypto.createHash('md5').update(normalized).digest('hex');
+}
 
 /**
  * Sends raw text to the AI to be structured into a financial record.
@@ -13,6 +24,14 @@ const openai = new OpenAI({
  */
 async function structureText(rawText) {
   console.log('Sending text to AI for structuring...');
+
+  // Check cache
+  const cacheKey = getCacheKey(rawText);
+  const cached = aiCache.get(cacheKey);
+  if (cached) {
+    console.log('Cache hit for:', rawText.substring(0, 50));
+    return cached;
+  }
 
   const today = new Date();
   const yesterday = new Date(today);
@@ -99,6 +118,8 @@ Output 7: { "tipe": "IN", "nominal": 7500000, "kategori": "Penjualan", "keterang
     }
     
     console.log('AI structuring successful:', structuredData);
+    // Cache the result
+    aiCache.set(cacheKey, structuredData);
     return structuredData;
   } catch (error) {
     console.error('Error during AI structuring:', error);

@@ -7,6 +7,10 @@ const {
   getTransactions,
   getLastTransactions,
   deleteLastTransaction,
+  searchTransactions,
+  updateTransaction,
+  getUserCurrency,
+  setUserCurrency,
 } = require("./db");
 const { saveReceipt } = require("./file-saver");
 
@@ -36,6 +40,27 @@ client.on("message", async (message) => {
   // Cancel last transaction
   if (messageBody === "batal" || messageBody === "batalkan" || messageBody.includes("batal transaksi")) {
     await handleCancelTransaction(message, senderId);
+    return;
+  }
+
+  // Search transactions
+  if (messageBody.startsWith('cari') || messageBody.startsWith('search')) {
+    const keyword = messageBody.split(' ').slice(1).join(' ');
+    await handleSearch(message, senderId, keyword);
+    return;
+  }
+
+  // Edit transaction
+  if (messageBody.startsWith('edit transaksi') || messageBody.startsWith('ubah transaksi')) {
+    await handleEditTransaction(message, senderId, messageBody);
+    return;
+  }
+
+  // Set currency preference
+  const currencyMatch = messageBody.match(/^set currency (\w{3})$/i);
+  if (currencyMatch) {
+    const currency = currencyMatch[1].toUpperCase();
+    await handleSetCurrency(message, senderId, currency);
     return;
   }
 
@@ -109,7 +134,82 @@ async function handleCancelTransaction(message, senderId) {
   }
 }
 
+async function handleSearch(message, senderId, keyword) {
+  if (!keyword.trim()) {
+    return message.reply('Masukkan kata kunci pencarian. Contoh: "cari beli ayam"');
+  }
+  try {
+    const transactions = await searchTransactions(keyword);
+    if (transactions.length === 0) {
+      return message.reply(`Tidak ditemukan transaksi dengan kata kunci "${keyword}".`);
+    }
+    let reply = `🔍 *Hasil pencarian untuk "${keyword}":*\n\n`;
+    transactions.forEach((tx, idx) => {
+      const sign = tx.type === 'IN' ? '+' : '-';
+      const date = new Date(tx.transaction_date).toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+      });
+      const amount = new Intl.NumberFormat('id-ID').format(tx.amount);
+      reply += `*${idx + 1}. ${date}: ${sign}Rp${amount}* (${tx.category} - ${tx.description || 'N/A'})\n`;
+      if (tx.items && tx.items.length > 0) {
+        tx.items.forEach(item => {
+          const itemPrice = new Intl.NumberFormat('id-ID').format(item.price);
+          reply += `  - ${item.item_name} (${item.quantity}x) @ Rp${itemPrice}\n`;
+        });
+      }
+      reply += '\n';
+    });
+    await message.reply(reply);
+  } catch (error) {
+    console.error('Search error:', error);
+    await message.reply('Terjadi kesalahan saat mencari transaksi.');
+  }
+}
+
+async function handleEditTransaction(message, senderId, messageBody) {
+  // Simple parsing: assume format "edit transaksi terakhir jumlah 75000"
+  const parts = messageBody.split(' ');
+  const amountIndex = parts.findIndex(p => p === 'jumlah' || p === 'nominal');
+  if (amountIndex === -1) {
+    return message.reply('Format edit tidak valid. Contoh: "edit transaksi terakhir jumlah 75000"');
+  }
+  const amount = parseInt(parts[amountIndex + 1].replace(/[^0-9]/g, ''));
+  if (isNaN(amount)) {
+    return message.reply('Jumlah tidak valid.');
+  }
+  try {
+    // Get last transaction ID
+    const lastTransactions = await getLastTransactions(1);
+    if (lastTransactions.length === 0) {
+      return message.reply('Tidak ada transaksi untuk diedit.');
+    }
+    const lastId = lastTransactions[0].id;
+    await updateTransaction(lastId, { amount });
+    await message.reply(`✅ Transaksi terakhir (ID: ${lastId}) berhasil diubah jumlah menjadi Rp${new Intl.NumberFormat('id-ID').format(amount)}.`);
+  } catch (error) {
+    console.error('Edit error:', error);
+    await message.reply('Gagal mengedit transaksi.');
+  }
+}
+
+async function handleSetCurrency(message, senderId, currency) {
+  // Validate currency code (simple)
+  const validCurrencies = ['IDR', 'USD', 'EUR'];
+  if (!validCurrencies.includes(currency)) {
+    return message.reply(`Mata uang "${currency}" tidak didukung. Gunakan IDR, USD, atau EUR.`);
+  }
+  try {
+    await setUserCurrency(senderId, currency);
+    await message.reply(`✅ Mata uang preferensi diatur ke ${currency}. Laporan akan menampilkan jumlah dalam ${currency}.`);
+  } catch (error) {
+    console.error('Set currency error:', error);
+    await message.reply('Gagal menyimpan preferensi mata uang.');
+  }
+}
+
 async function handleReportPeriodSelection(message, senderId, choice) {
+  const userCurrency = await getUserCurrency(senderId);
   const normalizedChoice = choice.replace(/\./g, "").trim();
 
   // Handle "last 10" separately as it doesn't use a date range
@@ -118,7 +218,7 @@ async function handleReportPeriodSelection(message, senderId, choice) {
     choice.match(/10 (transaksi )?terakhir/)
   ) {
     try {
-      const transactions = await getLastTransactions(10);
+      const transactions = await getLastTransactions(10, userCurrency);
       if (transactions.length === 0) {
         delete userState[senderId];
         return message.reply("Tidak ada transaksi yang ditemukan.");
@@ -147,7 +247,7 @@ async function handleReportPeriodSelection(message, senderId, choice) {
   }
 
   try {
-    const transactions = await getTransactions(startDate, endDate);
+    const transactions = await getTransactions(startDate, endDate, userCurrency);
     if (transactions.length === 0) {
       delete userState[senderId];
       return message.reply(
