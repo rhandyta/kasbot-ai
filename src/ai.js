@@ -97,6 +97,14 @@ Output 6: { "tipe": "OUT", "nominal": 50000, "kategori": "Makanan", "keterangan"
 Example 7 (Income from sale): "jual laptop 7500000"
 Output 7: { "tipe": "IN", "nominal": 7500000, "kategori": "Penjualan", "keterangan": "Jual laptop", "transaction_date": "${today.toISOString().slice(0, 10)}", "items": [] }`;
 
+  const openaiOptions = {
+    apiKey: config.ai.apiKey,
+  };
+  if (config.ai.baseUrl) {
+    openaiOptions.baseURL = config.ai.baseUrl;
+  }
+  const openai = new OpenAI(openaiOptions);
+
   try {
     const response = await openai.chat.completions.create({
       model: 'deepseek-chat', // Use the appropriate model name for DeepSeek

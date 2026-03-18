@@ -16,7 +16,6 @@
     "mysql2": "^3.19.1",
     "openai": "^6.29.0",
     "qrcode-terminal": "^0.12.0",
-    "tesseract.js": "^7.0.0",
     "whatsapp-web.js": "^1.34.6"
   }
 }

@@ -463,6 +463,9 @@ function getDateRange(choice) {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1)
         .toISOString()
         .slice(0, 10);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+        .toISOString()
+        .slice(0, 10);
       periodName = "Bulan Ini";
       break;
     case "7":
@@ -485,6 +488,7 @@ function getDateRange(choice) {
     case "tahun ini":
     case "1 tahun":
       startDate = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
+      endDate = new Date(now.getFullYear(), 11, 31).toISOString().slice(0, 10);
       periodName = "Tahun Ini";
       break;
     default:

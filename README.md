@@ -7,8 +7,8 @@ Project ini adalah bot WhatsApp yang berfungsi sebagai asisten keuangan pribadi.
 - **Backend**: Node.js
 - **WhatsApp API**: `whatsapp-web.js`
 - **QR Code**: `qrcode-terminal`
-- **OCR**: `tesseract.js` dengan preprocessing gambar menggunakan `jimp`
-- **Image Preprocessing**: `jimp` (grayscale, contrast, thresholding)
+- **OCR**: `EasyOCR` (Python) dengan dukungan bahasa Indonesia & Inggris
+- **Image Preprocessing**: `jimp` (grayscale, contrast, resizing)
 - **AI (NLP)**: DeepSeek AI via `openai` library
 - **Caching**: `lru-cache` untuk mengurangi API calls dan meningkatkan kecepatan
 - **Database**: `mysql2`
@@ -102,7 +102,7 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 - Laporan otomatis akan dikonversi ke mata uang yang Anda pilih.
 
 ### 🖼️ Optimasi OCR dengan Preprocessing Gambar
-- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, kontras, thresholding) sebelum dikenali oleh Tesseract.
+- Gambar struk akan diproses terlebih dahulu menggunakan `jimp` (grayscale, kontras, thresholding) sebelum dikenali oleh EasyOCR.
 - Meningkatkan akurasi pengenalan teks pada gambar dengan pencahayaan buruk atau noise.
 
 ### ⚡ Caching Respons AI
