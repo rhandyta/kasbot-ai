@@ -9,6 +9,7 @@ const {
 } = require('../../db');
 const { formatMoney } = require('../utils');
 const { getUserState, clearUserState } = require('../state');
+const { createButtons, createList } = require('../interactive');
 
 function validateTransaction(tx) {
   const errors = [];
@@ -69,13 +70,56 @@ async function sendPendingTransactionPreview(message, senderId, state) {
     }
     txt += '\n';
   });
-  txt += `Balas:\n- ok\n- ok paksa\n- batal\n- lihat\n- ubah transaksi <n> jumlah <angka>\n- ubah transaksi <n> kategori <teks>\n- ubah transaksi <n> keterangan <teks>\n- ubah transaksi <n> tanggal YYYY-MM-DD\n- ubah transaksi <n> item tambah <nama> <qty> <harga>\n- ubah transaksi <n> item hapus <no>\n- ubah transaksi <n> item ubah <no> <qty> <harga>`;
+  txt += `Pilih tombol atau balas:\n- ok\n- ok paksa\n- batal\n- lihat\n- ubah transaksi <n> jumlah <angka>\n- ubah transaksi <n> kategori <teks>\n- ubah transaksi <n> keterangan <teks>\n- ubah transaksi <n> tanggal YYYY-MM-DD\n- ubah transaksi <n> item tambah <nama> <qty> <harga>\n- ubah transaksi <n> item hapus <no>\n- ubah transaksi <n> item ubah <no> <qty> <harga>`;
   await message.reply(txt);
+
+  const buttons = createButtons(
+    'Aksi cepat:',
+    [
+      { id: 'tx_ok', body: 'OK' },
+      { id: 'tx_cancel', body: 'Batal' },
+      { id: 'tx_show', body: 'Lihat' },
+    ],
+    '',
+    '',
+  );
+  if (buttons) {
+    await message.reply(buttons);
+  }
 }
 
 async function handlePendingTransactionMessage(message, senderId, messageBody, rawMessageBody) {
   const state = getUserState(senderId);
   if (!state || state.step !== 'awaiting_tx_confirmation') return false;
+
+  if (messageBody === 'tx_ok') {
+    messageBody = 'ok';
+    rawMessageBody = 'ok';
+  } else if (messageBody === 'tx_cancel') {
+    messageBody = 'batal';
+    rawMessageBody = 'batal';
+  } else if (messageBody === 'tx_show') {
+    messageBody = 'lihat';
+    rawMessageBody = 'lihat';
+  }
+
+  const catPickMatch = messageBody.match(/^txcat_(\d+)_(\d+)$/i);
+  if (catPickMatch) {
+    const txNo = parseInt(catPickMatch[1], 10);
+    const catNo = parseInt(catPickMatch[2], 10);
+    if (!Number.isFinite(txNo) || txNo < 1 || txNo > state.transactions.length) {
+      await message.reply('Nomor transaksi tidak valid.');
+      return true;
+    }
+    const cats = await listCategories(state.accountId);
+    if (!Number.isFinite(catNo) || catNo < 1 || catNo > cats.length) {
+      await message.reply('Nomor kategori tidak valid.');
+      return true;
+    }
+    state.transactions[txNo - 1].kategori = cats[catNo - 1];
+    await sendPendingTransactionPreview(message, senderId, state);
+    return true;
+  }
 
   if (messageBody === 'lihat') {
     await sendPendingTransactionPreview(message, senderId, state);
@@ -175,6 +219,25 @@ async function handlePendingTransactionMessage(message, senderId, messageBody, r
         const cats = await listCategories(state.accountId);
         if (cats.length === 0) {
           await message.reply('Belum ada kategori. Tambah dulu: kategori tambah <nama>');
+          return true;
+        }
+        const list = createList(
+          `Pilih kategori untuk transaksi ${index}:`,
+          'Pilih',
+          [
+            {
+              title: 'Kategori',
+              rows: cats.slice(0, 50).map((c, i) => ({
+                id: `txcat_${index}_${i + 1}`,
+                title: c,
+              })),
+            },
+          ],
+          'Kategori',
+          '',
+        );
+        if (list) {
+          await message.reply(list);
           return true;
         }
         const lines = cats.map((c, i) => `${i + 1}. ${c}`).join('\n');

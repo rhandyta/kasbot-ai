@@ -14,6 +14,7 @@ const report = require('./report');
 const account = require('./account');
 const tx = require('./transaction');
 const category = require('./category');
+const { extractInteractiveId } = require('./interactive');
 
 const attemptBuckets = new Map();
 
@@ -99,11 +100,15 @@ function createBot() {
     const senderId = message.from;
     await dbReady;
 
-    const rawMessageBody = message.body
+    let rawMessageBody = message.body
       .replace(/@\d+/g, '')
       .replace(/\s\s+/g, ' ')
       .trim();
-    const messageBody = rawMessageBody.toLowerCase();
+    const interactiveId = extractInteractiveId(message);
+    if (interactiveId) {
+      rawMessageBody = interactiveId;
+    }
+    let messageBody = rawMessageBody.toLowerCase();
 
     const currentState = getUserState(senderId);
     if (currentState?.step === 'awaiting_tx_confirmation') {

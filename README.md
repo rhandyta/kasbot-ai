@@ -132,6 +132,10 @@ Berikut adalah fitur-fitur baru yang telah ditambahkan untuk meningkatkan kemamp
 - Gunakan perintah `cari <keyword>` untuk mencari transaksi berdasarkan kata kunci dalam deskripsi atau nama item.
 - Contoh: `cari parkir` akan menampilkan semua transaksi yang mengandung kata "parkir".
 
+### 💬 Interactive Messages (List/Buttons)
+- Pada beberapa flow (contoh: `laporan`, preview transaksi, dan pilih kategori), bot akan mengirim List/Buttons agar lebih enak ditap.
+- Jika perangkat tidak mendukung, bot otomatis fallback ke perintah teks biasa.
+
 ### ✏️ Edit Transaksi Terakhir
 - Gunakan perintah `edit transaksi terakhir jumlah <jumlah baru>` untuk mengubah nominal transaksi terakhir.
 - Contoh: `edit transaksi terakhir jumlah 75000` akan mengubah nominal transaksi terakhir menjadi 75.000.
@@ -168,6 +172,7 @@ Contoh:
 - Setelah kamu kirim transaksi (teks/foto struk), bot akan mengirim preview dulu.
 - Balas `ok` untuk menyimpan atau `batal` untuk membatalkan.
 - Jika ada validasi yang gagal, bot akan minta diperbaiki (atau gunakan `ok paksa`).
+- Bot juga mendukung Interactive Messages (List/Buttons) untuk aksi cepat (OK/Batal/Lihat) dan pilih kategori/periode (jika client mendukung).
 - Bisa koreksi sebelum simpan:
   - `ubah transaksi <n> jumlah <angka>`
   - `ubah transaksi <n> kategori <teks>`

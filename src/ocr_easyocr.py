@@ -25,15 +25,21 @@ def main():
         print(json.dumps({"error": "EasyOCR not installed"}), file=sys.stderr)
         sys.exit(1)
     
-    # Initialize reader (English and Indonesian, GPU if available)
     reader = easyocr.Reader(['en', 'id'], gpu=False, verbose=False)
-    
+
     result = reader.readtext(
         image_path,
         detail=0,
-        paragraph=True,
-        rotation_info=[0, 90, 180, 270],
+        paragraph=False,
     )
+
+    if not result:
+        result = reader.readtext(
+            image_path,
+            detail=0,
+            paragraph=True,
+            rotation_info=[0, 90, 180, 270],
+        )
     
     # Combine lines with newline
     text = "\n".join(result)

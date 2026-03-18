@@ -43,7 +43,7 @@ async function processTransaction(message, senderId, accountId) {
         const normalizedOcr = normalizeTextForHash(ocrText);
         textHash = normalizedOcr ? sha256Hex(normalizedOcr) : null;
       } catch {
-        return message.reply('Maaf, gagal memproses gambar.');
+        ocrText = '';
       }
     }
   }

@@ -1,9 +1,38 @@
 const { getUserCurrency, getTransactions, getLastTransactions } = require('../db');
 const { getDateRange, formatMoney } = require('./utils');
 const { setUserState, clearUserState, getUserState } = require('./state');
+const { createList } = require('./interactive');
 
 async function startReportFlow(client, senderId) {
   setUserState(senderId, { step: 'awaiting_report_period' });
+  const list = createList(
+    'Pilih periode laporan yang diinginkan:',
+    'Pilih',
+    [
+      {
+        title: 'Periode',
+        rows: [
+          { id: 'report_1', title: '10 Transaksi Terakhir' },
+          { id: 'report_2', title: 'Hari ini' },
+          { id: 'report_3', title: '3 Hari Terakhir' },
+          { id: 'report_4', title: 'Minggu ini' },
+          { id: 'report_5', title: '2 Minggu Terakhir' },
+          { id: 'report_6', title: 'Bulan ini' },
+          { id: 'report_7', title: '3 Bulan Terakhir' },
+          { id: 'report_8', title: '6 Bulan Terakhir' },
+          { id: 'report_9', title: 'Tahun ini' },
+        ],
+      },
+    ],
+    'Laporan',
+    '',
+  );
+
+  if (list) {
+    await client.sendMessage(senderId, list);
+    return;
+  }
+
   const reply = `Pilih periode laporan yang diinginkan:
 1. 10 Transaksi Terakhir
 2. Hari ini
@@ -78,7 +107,11 @@ async function handleDetailRequest(message, senderId, messageBody) {
 
 async function handleReportPeriodSelection(message, senderId, accountId, choice) {
   const userCurrency = await getUserCurrency(senderId);
-  const normalizedChoice = choice.replace(/\./g, '').trim();
+  let normalizedChoice = choice.replace(/\./g, '').trim();
+  const reportMatch = normalizedChoice.match(/^report_(\d+)$/i);
+  if (reportMatch) {
+    normalizedChoice = reportMatch[1];
+  }
 
   if (normalizedChoice.match(/^(1|10)$/) || choice.match(/10 (transaksi )?terakhir/)) {
     try {

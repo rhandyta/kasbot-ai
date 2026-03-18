@@ -34,6 +34,7 @@ async function recognizeText(base64Image) {
   let tempFilePath = null;
   let tempFallbackPath = null;
   try {
+    const timeoutMs = Math.max(parseInt(process.env.OCR_TIMEOUT_MS || '120000', 10) || 120000, 5000);
     const imageBuffer = Buffer.from(base64Image, 'base64');
     const processedBuffer = await preprocessImage(imageBuffer);
 
@@ -57,7 +58,7 @@ async function recognizeText(base64Image) {
             python.kill();
           } catch {}
           reject(new Error('EasyOCR timeout'));
-        }, 15000);
+        }, timeoutMs);
 
         python.stdout.on('data', (data) => {
           stdout += data.toString();
@@ -96,14 +97,18 @@ async function recognizeText(base64Image) {
     if (!result || result.trim().length === 0) {
       tempFallbackPath = path.join(tempDir, `ocr_raw_${Date.now()}.jpg`);
       fs.writeFileSync(tempFallbackPath, imageBuffer);
-      result = await runPython(tempFallbackPath);
+      try {
+        result = await runPython(tempFallbackPath);
+      } catch (e) {
+        result = '';
+      }
     }
 
     console.log('Text recognition successful.');
     return result;
   } catch (error) {
     console.error('Error during OCR processing:', error);
-    throw new Error('Failed to recognize text from image.');
+    return '';
   } finally {
     // Clean up temporary file
     if (tempFilePath && fs.existsSync(tempFilePath)) {
