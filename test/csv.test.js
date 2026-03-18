@@ -9,5 +9,5 @@ test('parseStatementCsv parses minimal csv', () => {
   assert.equal(txs[0].transaction_date, '2026-03-01');
   assert.equal(txs[0].nominal, 12000);
   assert.equal(txs[1].tipe, 'OUT');
+  assert.ok(typeof txs[0].fingerprint_hash === 'string' && txs[0].fingerprint_hash.length > 0);
 });
-

@@ -120,6 +120,8 @@ Anda bisa berinteraksi dengan bot melalui beberapa cara:
   - `undo` / `batal` – Membatalkan transaksi terakhir.
   - `undo kembali` – Mengembalikan transaksi terakhir yang dibatalkan.
   - `edit transaksi terakhir jumlah <jumlah>` – Mengubah nominal transaksi terakhir.
+  - `edit transaksi <id> jumlah <jumlah>` – Mengubah nominal transaksi berdasarkan ID.
+  - `hapus transaksi <id>` – Menghapus transaksi berdasarkan ID (bisa di-undo dengan `undo kembali`).
   - `set currency <kode>` – Mengubah preferensi mata uang (IDR, USD, EUR).
   - `help` / `menu` – Menampilkan daftar perintah.
   - `budget set <kategori> <jumlah>` – Set budget kategori bulan ini.
@@ -183,6 +185,12 @@ Env terkait OCR:
 - `OCR_TIMEOUT_MS` (default 120000)
 - `PYTHON_BIN` (default `python`)
 - `OCR_LEXICON_EXTRA` (opsional, daftar kata dipisah koma untuk koreksi OCR, contoh: `OCR_LEXICON_EXTRA=INDOMARET,NISSIN,TANGO`)
+- `OCR_DEBUG_SAVE` (opsional, simpan output OCR mentah & postprocess)
+
+Evaluasi OCR batch:
+```bash
+node scripts/ocr_eval.js path\to\folder\images
+```
 
 ### ⚡ Caching Respons AI
 - Hasil pemrosesan AI untuk teks yang sama akan disimpan dalam cache menggunakan `lru-cache`.
@@ -250,3 +258,25 @@ Contoh:
 
 ### 🧾 Audit Log
 - Perubahan penting (buat invite, join token, insert/edit/hapus transaksi) dicatat di tabel `audit_logs`.
+
+## 🧰 Troubleshooting
+
+- `/health` status 503
+  - Cek `schema.missingTables/missingColumns` di response.
+  - Cek Python EasyOCR (`python -c "import easyocr; print(1)"`) dan pastikan `PYTHON_BIN` sesuai.
+- OCR lambat/timeout
+  - Naikkan `OCR_TIMEOUT_MS` (contoh `180000`) dan coba lagi.
+  - Aktifkan `OCR_DEBUG_SAVE=true` untuk menyimpan hasil OCR mentah & postprocess di `public/uploads/ocr_debug`.
+- Error “Unknown column …”
+  - Restart aplikasi supaya `ensureSchema()` menjalankan migrasi kolom yang missing.
+
+## 🗄️ Backup & Restore (Audit)
+
+- Backup (contoh MySQL):
+  - `mysqldump -u <user> -p <db_name> > backup.sql`
+- Restore:
+  - `mysql -u <user> -p <db_name> < backup.sql`
+
+## 🗺️ Catatan Roadmap
+
+- Poin 2 (WhatsApp Cloud API) dan poin 3 (Dashboard admin) disimpan sebagai milestone berikutnya untuk stabilitas dan UX admin.

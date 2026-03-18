@@ -4,6 +4,7 @@ const { MessageMedia } = require('whatsapp-web.js');
 const { getUserCurrency, getLastTransactions, getTransactionsForExport } = require('../../db');
 const { getDateRange } = require('../utils');
 const { maskSecrets } = require('../../logger');
+const { logAudit } = require('../../db/audit');
 
 function escapeCsv(value) {
   const s = String(value ?? '');
@@ -114,21 +115,29 @@ async function handleExport(client, message, senderId, accountId, rawMessageBody
   }
   const normalized = arg.toLowerCase();
 
+  const sendWithAudit = async (rows, title, meta) => {
+    await logAudit(accountId, senderId, 'export_csv', 'account', String(accountId), {
+      mode,
+      count: rows.length,
+      title,
+      ...meta,
+    });
+    return mode === 'detail'
+      ? sendCsvPerItem(client, message, senderId, rows, title)
+      : sendCsvFromTransactions(client, message, senderId, rows, title);
+  };
+
   if (!arg || normalized === 'bulan ini') {
     const dr = getDateRange('bulan ini');
     const rows = await getTransactionsForExport(accountId, dr.startDate, dr.endDate);
     if (rows.length === 0) return message.reply('Tidak ada transaksi untuk diexport.');
-    return mode === 'detail'
-      ? sendCsvPerItem(client, message, senderId, rows, 'Bulan Ini')
-      : sendCsvFromTransactions(client, message, senderId, rows, 'Bulan Ini');
+    return sendWithAudit(rows, 'Bulan Ini', { startDate: dr.startDate, endDate: dr.endDate });
   }
 
   if (normalized.match(/^(1|10)$/) || normalized.includes('10 transaksi')) {
     const last = await getLastTransactions(accountId, 10, userCurrency);
     if (last.length === 0) return message.reply('Tidak ada transaksi untuk diexport.');
-    return mode === 'detail'
-      ? sendCsvPerItem(client, message, senderId, last, '10 Transaksi Terakhir')
-      : sendCsvFromTransactions(client, message, senderId, last, '10 Transaksi Terakhir');
+    return sendWithAudit(last, '10 Transaksi Terakhir', { limit: 10 });
   }
 
   const rangeMatch = arg.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$/);
@@ -138,9 +147,7 @@ async function handleExport(client, message, senderId, accountId, rawMessageBody
     const rows = await getTransactionsForExport(accountId, startDate, endDate);
     if (rows.length === 0) return message.reply('Tidak ada transaksi untuk diexport.');
     const title = `${startDate} s/d ${endDate}`;
-    return mode === 'detail'
-      ? sendCsvPerItem(client, message, senderId, rows, title)
-      : sendCsvFromTransactions(client, message, senderId, rows, title);
+    return sendWithAudit(rows, title, { startDate, endDate });
   }
 
   const dr = getDateRange(arg);
@@ -152,9 +159,7 @@ async function handleExport(client, message, senderId, accountId, rawMessageBody
 
   const rows = await getTransactionsForExport(accountId, dr.startDate, dr.endDate);
   if (rows.length === 0) return message.reply('Tidak ada transaksi untuk diexport.');
-  return mode === 'detail'
-    ? sendCsvPerItem(client, message, senderId, rows, dr.periodName)
-    : sendCsvFromTransactions(client, message, senderId, rows, dr.periodName);
+  return sendWithAudit(rows, dr.periodName, { startDate: dr.startDate, endDate: dr.endDate });
 }
 
 module.exports = { handleExport };

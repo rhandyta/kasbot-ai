@@ -269,6 +269,87 @@ async function deleteLastTransaction(accountId, actorUserId = null) {
   }
 }
 
+async function deleteTransactionById(accountId, transactionId, actorUserId = null) {
+  await ensureSchema();
+  const id = parseInt(transactionId, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Transaction id invalid');
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT id, transaction_date, type, amount, currency, category, merchant, description, receipt_path, receipt_hash, text_hash, fingerprint_hash
+       FROM transactions
+       WHERE account_id = ? AND id = ?
+       LIMIT 1`,
+      [accountId, id],
+    );
+    if (rows.length === 0) throw new Error('Transaction not found');
+    const tx = rows[0];
+
+    const [items] = await connection.execute(
+      `SELECT item_name, quantity, price
+       FROM transaction_items
+       WHERE transaction_id = ?
+       ORDER BY id ASC`,
+      [id],
+    );
+
+    const [deletedResult] = await connection.execute(
+      `INSERT INTO deleted_transactions (
+        original_transaction_id,
+        account_id,
+        deleted_by_user_id,
+        transaction_date,
+        type,
+        amount,
+        currency,
+        category,
+        merchant,
+        description,
+        receipt_path,
+        receipt_hash,
+        text_hash,
+        fingerprint_hash
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        accountId,
+        actorUserId,
+        tx.transaction_date,
+        tx.type,
+        tx.amount,
+        tx.currency,
+        tx.category,
+        tx.merchant,
+        tx.description,
+        tx.receipt_path,
+        tx.receipt_hash,
+        tx.text_hash,
+        tx.fingerprint_hash,
+      ],
+    );
+    const deletedId = deletedResult.insertId;
+    if (items.length > 0) {
+      const values = items.map((it) => [deletedId, it.item_name, it.quantity, it.price]);
+      await connection.query(
+        `INSERT INTO deleted_transaction_items (deleted_transaction_id, item_name, quantity, price) VALUES ?`,
+        [values],
+      );
+    }
+
+    await connection.execute('DELETE FROM transactions WHERE id = ? AND account_id = ?', [id, accountId]);
+    await connection.commit();
+    await logAudit(accountId, actorUserId, 'transaction_delete', 'transaction', String(id), {});
+    return id;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function searchTransactions(accountId, keyword, options = null) {
   await ensureSchema();
   const limit = options?.limit ? Math.min(parseInt(options.limit, 10), 100) : 50;
@@ -548,6 +629,7 @@ module.exports = {
   getTransactions,
   getLastTransactions,
   deleteLastTransaction,
+  deleteTransactionById,
   searchTransactions,
   updateTransaction,
   getLastReceiptTransaction,

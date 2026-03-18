@@ -2,19 +2,19 @@ const { spawn } = require('child_process');
 const { pool } = require('../db/pool');
 const { logger } = require('../logger');
 const { parseStatementCsv } = require('../import/csv');
-const { insertTransaction, ensureSchema } = require('../db');
+const { insertTransaction, ensureSchema, findTransactionByFingerprint } = require('../db');
+const { metrics, inc, setGauge } = require('../metrics');
+const { checkSchema } = require('../db/schemaCheck');
+const { logAudit } = require('../db/audit');
 
 let lastPythonCheck = { at: 0, ok: null, error: null };
-const metrics = {
-  ocr_check_ms: 0,
-  health_requests: 0,
-};
 
 async function checkDb() {
   try {
     await pool.execute('SELECT 1');
     return { ok: true };
   } catch (e) {
+    inc('db_errors', 1);
     return { ok: false, error: e?.message || 'db_error' };
   }
 }
@@ -51,7 +51,7 @@ async function checkPythonEasyOcrCached() {
     child.on('close', (code) => {
       clearTimeout(timer);
       const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
-      metrics.ocr_check_ms = Math.round(elapsedMs);
+      setGauge('last_ocr_ms', Math.round(elapsedMs));
       if (code === 0 && stdout.trim() === '1') {
         resolve({ ok: true });
       } else {
@@ -70,10 +70,9 @@ async function checkPythonEasyOcrCached() {
 
 function registerRoutes(app) {
   app.get('/health', async (req, res) => {
-    metrics.health_requests += 1;
-    const [db, python] = await Promise.all([checkDb(), checkPythonEasyOcrCached()]);
-    const ok = db.ok && python.ok;
-    res.status(ok ? 200 : 503).json({ ok, db, python });
+    const [db, python, schema] = await Promise.all([checkDb(), checkPythonEasyOcrCached(), checkSchema()]);
+    const ok = db.ok && python.ok && schema.ok;
+    res.status(ok ? 200 : 503).json({ ok, db, python, schema });
   });
 
   app.get('/metrics', (req, res) => {
@@ -96,11 +95,24 @@ function registerRoutes(app) {
         return res.json({ ok: true, dryRun: true, count: txs.length, sample: txs.slice(0, 3) });
       }
       let inserted = 0;
+      let skipped = 0;
       for (const tx of txs) {
+        if (tx.fingerprint_hash) {
+          const dup = await findTransactionByFingerprint(account, tx.fingerprint_hash);
+          if (dup) {
+            skipped += 1;
+            continue;
+          }
+        }
         await insertTransaction(account, tx, null);
         inserted += 1;
       }
-      return res.json({ ok: true, inserted });
+      await logAudit(account, null, 'api_import_statement', 'account', String(account), {
+        request_id: req.requestId || null,
+        inserted,
+        skipped,
+      });
+      return res.json({ ok: true, inserted, skipped });
     } catch (e) {
       logger.error('import_statement_failed', { error: e?.message || String(e) });
       return res.status(400).json({ ok: false, error: e?.message || 'import_failed' });

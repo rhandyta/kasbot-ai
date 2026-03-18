@@ -4,6 +4,7 @@ const { startBot } = require('./bot');
 const { runDueRecurringAll, ensureSchema } = require('./db');
 const { logger } = require('./logger');
 const { runReceiptRetention } = require('./jobs/receiptRetention');
+const { checkSchema } = require('./db/schemaCheck');
 
 function startHttpServer() {
   const port = parseInt(process.env.PORT || '3000', 10);
@@ -26,6 +27,15 @@ startHttpServer();
 startBot();
 
 ensureSchema().then(() => {
+  checkSchema()
+    .then((report) => {
+      if (!report.ok) {
+        logger.error('schema_check_failed', report);
+      } else {
+        logger.info('schema_check_ok', {});
+      }
+    })
+    .catch(() => {});
   runDueRecurringAll().catch((e) => console.error('Recurring runner error:', e));
   setInterval(() => {
     runDueRecurringAll().catch((e) => console.error('Recurring runner error:', e));

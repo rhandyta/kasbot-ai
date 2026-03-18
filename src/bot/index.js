@@ -1,5 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const { logger } = require('../logger');
+const { inc } = require('../metrics');
 const {
   ensureSchema,
   getActiveAccountContext,
@@ -99,6 +101,8 @@ function createBot() {
 
   client.on('message', async (message) => {
     const senderId = message.from;
+    const messageId = message?.id?._serialized || null;
+    inc('bot_messages', 1);
     await dbReady;
 
     let rawMessageBody = message.body
@@ -110,6 +114,12 @@ function createBot() {
       rawMessageBody = interactiveId;
     }
     let messageBody = rawMessageBody.toLowerCase();
+    logger.info('bot_message', {
+      message_id: messageId,
+      from: senderId,
+      type: message.type,
+      hasMedia: !!message.hasMedia,
+    });
 
     const currentState = getUserState(senderId);
     if (currentState?.step === 'awaiting_tx_confirmation') {
@@ -310,6 +320,13 @@ function createBot() {
       const ctx = await getCtx(true);
       if (!ctx) return;
       await tx.handleEditTransaction(message, senderId, ctx.accountId, messageBody);
+      return;
+    }
+
+    if (messageBody.startsWith('hapus transaksi')) {
+      const ctx = await getCtx(true);
+      if (!ctx) return;
+      await tx.handleDeleteTransactionById(message, senderId, ctx.accountId, rawMessageBody);
       return;
     }
 

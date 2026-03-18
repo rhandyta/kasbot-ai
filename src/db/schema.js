@@ -26,6 +26,13 @@ async function ensureSchema() {
     };
 
     await pool.execute(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id VARCHAR(64) PRIMARY KEY,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.execute(`
       CREATE TABLE IF NOT EXISTS accounts (
         id INT AUTO_INCREMENT PRIMARY KEY,
         share_token VARCHAR(64) NOT NULL UNIQUE,
@@ -303,6 +310,11 @@ async function ensureSchema() {
     if (!(await columnExists('user_settings', 'active_account_id'))) {
       await pool.execute(`ALTER TABLE user_settings ADD COLUMN active_account_id INT NULL`);
     }
+
+    await pool.execute(
+      `INSERT IGNORE INTO schema_migrations (id) VALUES (?)`,
+      ['bootstrap_2026_03_19'],
+    );
   })();
   return schemaEnsured;
 }

@@ -2,6 +2,7 @@ const { OpenAI } = require('openai');
 const config = require('./config');
 const crypto = require('crypto');
 const LRU = require('lru-cache');
+const { inc, time } = require('./metrics');
 
 const aiCache = new LRU({
   max: 1000,
@@ -24,11 +25,13 @@ function getCacheKey(rawText) {
  */
 async function structureText(rawText) {
   console.log('Sending text to AI for structuring...');
+  inc('ai_requests', 1);
 
   // Check cache
   const cacheKey = getCacheKey(rawText);
   const cached = aiCache.get(cacheKey);
   if (cached) {
+    inc('ai_cache_hits', 1);
     console.log('Cache hit for:', rawText.substring(0, 50));
     return cached;
   }
@@ -106,14 +109,16 @@ Output 7: { "tipe": "IN", "nominal": 7500000, "kategori": "Penjualan", "keterang
   const openai = new OpenAI(openaiOptions);
 
   try {
-    const response = await openai.chat.completions.create({
-      model: 'deepseek-chat', // Use the appropriate model name for DeepSeek
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: rawText },
-      ],
-      response_format: { type: 'json_object' },
-    });
+    const response = await time('last_ai_ms', async () =>
+      openai.chat.completions.create({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: rawText },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    );
 
     const structuredData = JSON.parse(response.choices[0].message.content);
     
@@ -130,6 +135,7 @@ Output 7: { "tipe": "IN", "nominal": 7500000, "kategori": "Penjualan", "keterang
     aiCache.set(cacheKey, structuredData);
     return structuredData;
   } catch (error) {
+    inc('ai_errors', 1);
     console.error('Error during AI structuring:', error);
     throw new Error('Failed to structure text with AI.');
   }

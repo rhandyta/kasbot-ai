@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { postProcessOcrText } = require('./ocr/postprocess');
+const { inc, time } = require('./metrics');
 
 /**
  * Preprocess image to improve OCR accuracy.
@@ -35,6 +36,7 @@ async function recognizeText(base64Image) {
   let tempFilePath = null;
   let tempFallbackPath = null;
   try {
+    inc('ocr_requests', 1);
     const timeoutMs = Math.max(parseInt(process.env.OCR_TIMEOUT_MS || '120000', 10) || 120000, 5000);
     const pythonBin = process.env.PYTHON_BIN || 'python';
     const imageBuffer = Buffer.from(base64Image, 'base64');
@@ -59,7 +61,9 @@ async function recognizeText(base64Image) {
           try {
             python.kill();
           } catch {}
-          reject(new Error('EasyOCR timeout'));
+          const err = new Error('EasyOCR timeout');
+          err.code = 'OCR_TIMEOUT';
+          reject(err);
         }, timeoutMs);
 
         python.stdout.on('data', (data) => {
@@ -91,8 +95,9 @@ async function recognizeText(base64Image) {
 
     let result = '';
     try {
-      result = await runPython(tempFilePath);
+      result = await time('last_ocr_ms', async () => runPython(tempFilePath));
     } catch (e) {
+      if (e && e.code === 'OCR_TIMEOUT') inc('ocr_timeouts', 1);
       result = '';
     }
 
@@ -100,15 +105,27 @@ async function recognizeText(base64Image) {
       tempFallbackPath = path.join(tempDir, `ocr_raw_${Date.now()}.jpg`);
       fs.writeFileSync(tempFallbackPath, imageBuffer);
       try {
-        result = await runPython(tempFallbackPath);
+        result = await time('last_ocr_ms', async () => runPython(tempFallbackPath));
       } catch (e) {
+        if (e && e.code === 'OCR_TIMEOUT') inc('ocr_timeouts', 1);
         result = '';
       }
     }
 
     console.log('Text recognition successful.');
-    return postProcessOcrText(result);
+    const post = postProcessOcrText(result);
+    if (String(process.env.OCR_DEBUG_SAVE || 'false').toLowerCase() === 'true') {
+      try {
+        const debugDir = path.join(__dirname, '..', 'public', 'uploads', 'ocr_debug');
+        if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+        const base = `ocr_${Date.now()}`;
+        fs.writeFileSync(path.join(debugDir, `${base}.raw.txt`), result);
+        fs.writeFileSync(path.join(debugDir, `${base}.post.txt`), post);
+      } catch {}
+    }
+    return post;
   } catch (error) {
+    inc('ocr_errors', 1);
     console.error('Error during OCR processing:', error);
     return '';
   } finally {

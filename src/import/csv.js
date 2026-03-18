@@ -1,3 +1,13 @@
+const crypto = require('crypto');
+
+function sha256Hex(text) {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function normalizeForFingerprint(text) {
+  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -122,6 +132,11 @@ function parseStatementCsv(csvText) {
     const merchant = iMerchant !== -1 ? String(row[iMerchant] || '').trim() : '';
     const description = iDescription !== -1 ? String(row[iDescription] || '').trim() : '';
 
+    const fingerprintSource = normalizeForFingerprint(
+      [date, type || 'OUT', amount, currency || 'IDR', merchant || '', description || ''].join('|'),
+    );
+    const fingerprint_hash = fingerprintSource ? sha256Hex(fingerprintSource) : null;
+
     txs.push({
       transaction_date: date,
       tipe: type || 'OUT',
@@ -130,6 +145,7 @@ function parseStatementCsv(csvText) {
       kategori: category || 'Uncategorized',
       merchant: merchant || null,
       keterangan: description || merchant || 'Import CSV',
+      fingerprint_hash,
       items: [],
     });
   }

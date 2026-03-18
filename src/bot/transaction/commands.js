@@ -1,5 +1,6 @@
 const {
   deleteLastTransaction,
+  deleteTransactionById,
   restoreLastDeletedTransaction,
   searchTransactions,
   updateTransaction,
@@ -67,26 +68,45 @@ async function handleSearch(message, accountId, keyword) {
 }
 
 async function handleEditTransaction(message, senderId, accountId, messageBody) {
-  const parts = messageBody.split(' ');
+  const parts = messageBody.split(' ').filter(Boolean);
+  const idIndex = parts.findIndex((p) => p === 'transaksi');
+  const hasId = idIndex !== -1 && Number.isFinite(parseInt(parts[idIndex + 1], 10));
+  const targetId = hasId ? parseInt(parts[idIndex + 1], 10) : null;
   const amountIndex = parts.findIndex((p) => p === 'jumlah' || p === 'nominal');
   if (amountIndex === -1) {
-    return message.reply('Format edit tidak valid. Contoh: "edit transaksi terakhir jumlah 75000"');
+    return message.reply('Format edit tidak valid. Contoh: "edit transaksi terakhir jumlah 75000" atau "edit transaksi 123 jumlah 75000"');
   }
   const amount = parseInt(parts[amountIndex + 1].replace(/[^0-9]/g, ''), 10);
   if (!Number.isFinite(amount)) {
     return message.reply('Jumlah tidak valid.');
   }
   try {
-    const lastTransactions = await getLastTransactions(accountId, 1);
-    if (lastTransactions.length === 0) {
-      return message.reply('Tidak ada transaksi untuk diedit.');
+    let txId = targetId;
+    if (!txId) {
+      const lastTransactions = await getLastTransactions(accountId, 1);
+      if (lastTransactions.length === 0) {
+        return message.reply('Tidak ada transaksi untuk diedit.');
+      }
+      txId = lastTransactions[0].id;
     }
-    const lastId = lastTransactions[0].id;
-    await updateTransaction(accountId, lastId, { amount }, senderId);
-    await message.reply(`✅ Transaksi terakhir (ID: ${lastId}) berhasil diubah jumlah menjadi Rp${formatMoney(amount)}.`);
+    await updateTransaction(accountId, txId, { amount }, senderId);
+    await message.reply(`✅ Transaksi (ID: ${txId}) berhasil diubah jumlah menjadi Rp${formatMoney(amount)}.`);
   } catch (error) {
     console.error('Edit error:', error);
     await message.reply('Gagal mengedit transaksi.');
+  }
+}
+
+async function handleDeleteTransactionById(message, senderId, accountId, messageBody) {
+  const m = messageBody.match(/^hapus transaksi\s+(\d+)$/i);
+  if (!m) return message.reply('Format: "hapus transaksi <id>"');
+  const id = parseInt(m[1], 10);
+  if (!Number.isFinite(id)) return message.reply('ID tidak valid.');
+  try {
+    const deletedId = await deleteTransactionById(accountId, id, senderId);
+    await message.reply(`✅ Transaksi (ID: ${deletedId}) berhasil dihapus. Balas "undo kembali" untuk mengembalikan transaksi terakhir yang dihapus.`);
+  } catch (e) {
+    await message.reply(e.message || 'Gagal menghapus transaksi.');
   }
 }
 
@@ -109,5 +129,6 @@ module.exports = {
   handleRestoreLastTransaction,
   handleSearch,
   handleEditTransaction,
+  handleDeleteTransactionById,
   handleSetCurrency,
 };
